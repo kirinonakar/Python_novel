@@ -1,6 +1,7 @@
 import gradio as gr
 from openai import OpenAI
 import os
+import re
 
 def load_system_prompt(filename="system_prompt.txt"):
     if os.path.exists(filename):
@@ -11,13 +12,66 @@ def load_system_prompt(filename="system_prompt.txt"):
             pass
     return "You are a professional novelist. Write engaging and immersive stories."
 
+def save_system_prompt(content, filename="system_prompt.txt"):
+    try:
+        with open(filename, "w", encoding="utf-8") as f:
+            f.write(content.strip())
+        return "✅ System prompt saved successfully!"
+    except Exception as e:
+        return f"❌ Failed to save: {str(e)}"
+
+def summarize_chapter(client, model, chapter_text, language, temperature=0.5):
+    prompt = (
+        f"Summarize the following chapter in 3-4 sentences in {language}.\n"
+        f"Focus only on key plot events and character changes that are essential for continuity.\n\n"
+        f"Chapter Content:\n{chapter_text[:4000]}" # Truncate for summary if too long
+    )
+    try:
+        response = client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=temperature,
+            max_tokens=500
+        )
+        return response.choices[0].message.content.strip()
+    except Exception:
+        return ""
+
+def split_plot_into_chapters(plot_seed, num_chapters):
+    import re
+    # Look for common chapter markers: Chapter 1, 1장, 제 1장, Chapter 01, etc.
+    # We want to find the text between markers.
+    chapter_plots = {}
+    
+    # Try to find all chapter-like markers and their positions
+    pattern = re.compile(r'(Chapter\s*\d+|第?\s*\d+\s*[章장])', re.IGNORECASE)
+    matches = list(pattern.finditer(plot_seed))
+    
+    if not matches:
+        return None
+    
+    for i in range(len(matches)):
+        start = matches[i].end()
+        end = matches[i+1].start() if i+1 < len(matches) else len(plot_seed)
+        content = plot_seed[start:end].strip()
+        # Extract number from marker
+        num_match = re.search(r'\d+', matches[i].group())
+        if num_match:
+            ch_num = int(num_match.group())
+            chapter_plots[ch_num] = content
+            
+    return chapter_plots
+
 def generate_plot_fn(
     api_base, 
     model_name, 
     system_prompt, 
     plot_seed, 
     num_chapters, 
-    language
+    language,
+    temperature=0.8,
+    top_p=0.95,
+    repetition_penalty=1.1
 ):
     if not api_base:
         api_base = "http://localhost:1234/v1"
@@ -42,7 +96,9 @@ def generate_plot_fn(
                 {"role": "user", "content": prompt}
             ],
             stream=True,
-            timeout=60.0
+            timeout=60.0,
+            temperature=temperature,
+            top_p=top_p
         )
         
         chunk_count = 0
@@ -82,7 +138,10 @@ def generate_novel(
     plot_seed, 
     num_chapters, 
     target_tokens, 
-    language
+    language,
+    temperature=0.8,
+    top_p=0.95,
+    repetition_penalty=1.1
 ):
     if not api_base:
         api_base = "http://localhost:1234/v1"
@@ -92,35 +151,54 @@ def generate_novel(
     client = OpenAI(base_url=api_base, api_key="lm-studio")
     
     full_text = ""
-    chapter_contents = []
+    chapter_summaries = []
     
-    history = [{"role": "system", "content": system_prompt}]
+    # Pre-parse chapters from plot if possible
+    chapter_plots = split_plot_into_chapters(plot_seed, int(num_chapters))
     
     for ch in range(1, int(num_chapters) + 1):
-        # Build prompt for the current chapter
-        prompt = f"Write Chapter {ch} of the novel.\n"
-        prompt += f"Total Chapters planned: {int(num_chapters)}\n"
-        prompt += f"Target length for this chapter: {target_tokens} tokens.\n"
-        prompt += f"Language: {language}\n"
-        prompt += f"Detailed Plot/Outline to follow: {plot_seed}\n"
+        # Build improved prompt for the current chapter
+        prompt = f"You are a professional novelist writing a novel in {language}.\n\n"
+        prompt += f"[Book Information]\n"
+        prompt += f"- Total Chapters: {int(num_chapters)}\n"
+        prompt += f"- Current Chapter to Write: Chapter {ch}\n"
         
-        if chapter_contents:
-            prompt += "\nPrevious chapters summary/context:\n"
-            # Provide the last chapter content to ensure context.
-            prompt += f"--- Last Chapter (Chapter {ch-1}) ---\n{chapter_contents[-1][-2000:]}\n"
+        # Specific plot for this chapter
+        if chapter_plots and ch in chapter_plots:
+            prompt += f"- Current Chapter Plot: {chapter_plots[ch]}\n\n"
+        else:
+            prompt += f"- Master Plot Outline:\n{plot_seed}\n\n"
+        
+        # Context Management
+        if chapter_summaries:
+            prompt += "[Story So Far (Summary)]\n"
+            for i, summ in enumerate(chapter_summaries):
+                prompt += f"Chapter {i+1}: {summ}\n"
+            prompt += "\n"
             
-        prompt += f"\nPlease write Chapter {ch} now. (Output ONLY the story content)"
+            # Direct previous context (last 1000 chars)
+            last_content = full_text.split("\n\n#")[-1] # Rudimentary way to get last chapter text
+            prompt += f"[Directly Preceding Content (End of Chapter {ch-1})]\n"
+            prompt += f"\"{last_content[-1000:]}\"\n\n"
+            
+        prompt += f"CRITICAL INSTRUCTION:\n"
+        prompt += f"1. Write ONLY Chapter {ch}. Do not rush into future chapters.\n"
+        prompt += f"2. Target length: ~{int(target_tokens)} tokens.\n"
+        prompt += f"3. Output ONLY the story text. No meta-talk or phrases like 'Sure, here is chapter...'."
 
-        temp_history = history + [{"role": "user", "content": prompt}]
-        
-        chapter_text = ""
         try:
+            chapter_text = ""
             stream = client.chat.completions.create(
                 model=model_name,
-                messages=temp_history,
-                max_tokens=max(int(target_tokens) + 1000, 4096), # Larger buffer for cut-offs
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": prompt}
+                ],
+                max_tokens=max(int(target_tokens) + 1000, 4096),
                 stream=True,
-                timeout=120.0 # Long timeout for creative writing
+                timeout=180.0,
+                temperature=temperature,
+                top_p=top_p
             )
             
             if language == "Korean":
@@ -145,17 +223,13 @@ def generate_novel(
             full_text += chapter_text
             yield full_text, None # Ensure end of chapter is shown
             
-            chapter_contents.append(chapter_text)
-            
-            # Keep history manageable
-            history.append({"role": "user", "content": f"Write Chapter {ch}"})
-            history.append({"role": "assistant", "content": chapter_text})
-            if len(history) > 10:
-                history = [history[0]] + history[-9:]
+            # Summarize this chapter for future context
+            summary = summarize_chapter(client, model_name, chapter_text, language)
+            chapter_summaries.append(summary)
             
         except Exception as e:
             # Append error message instead of replacing the entire content
-            yield full_text + chapter_text + f"\n\n[Generation Stoppped/Error]: {str(e)}", None
+            yield full_text + chapter_text + f"\n\n[Generation Stopped/Error]: {str(e)}", None
             break
 
     # Save to file in output directory with sequential numbering
@@ -174,21 +248,29 @@ def batch_process(
     num_chapters, 
     target_tokens, 
     language, 
-    batch_count
+    batch_count,
+    temperature=0.8,
+    top_p=0.95,
+    repetition_penalty=1.1
 ):
     batch_count = int(batch_count)
     for i in range(batch_count):
         # 1. Generate Plot
         plot_content = ""
-        plot_gen = generate_plot_fn(api_base, model_name, system_prompt, plot_seed, num_chapters, language)
+        plot_gen = generate_plot_fn(
+            api_base, model_name, system_prompt, plot_seed, num_chapters, language,
+            temperature=temperature, top_p=top_p, repetition_penalty=repetition_penalty
+        )
         for p in plot_gen:
             plot_content = p
             yield plot_content, f"Batch {i+1}/{batch_count} - Generating plot...", None
             
         # 2. Generate Novel from that plot
-        novel_gen = generate_novel(api_base, model_name, system_prompt, plot_content, num_chapters, target_tokens, language)
+        novel_gen = generate_novel(
+            api_base, model_name, system_prompt, plot_content, num_chapters, target_tokens, language,
+            temperature=temperature, top_p=top_p, repetition_penalty=repetition_penalty
+        )
         for n_text, n_file in novel_gen:
-            # Prepend batch status to novel text for clarity
             status_prefix = f"### [Batch {i+1}/{batch_count} In Progress]\n\n"
             yield plot_content, status_prefix + n_text, n_file
 
@@ -210,11 +292,16 @@ with gr.Blocks(title="AI Novel Generator") as demo:
                 value="google/gemma-4-26b-a4b",
                 allow_custom_value=True
             )
-            system_prompt = gr.Textbox(
-                label="System Prompt", 
-                value=load_system_prompt(),
-                lines=3
-            )
+            with gr.Row():
+                system_prompt = gr.Textbox(
+                    label="System Prompt", 
+                    value=load_system_prompt(),
+                    lines=4,
+                    scale=4
+                )
+                save_prompt_btn = gr.Button("💾 Save", scale=1)
+            
+            system_status = gr.Textbox(label="Save Status", interactive=False, placeholder="Status will appear here...")
             language = gr.Radio(["Korean", "Japanese", "English"], label="Language", value="Korean")
             
         with gr.Column(scale=1):
@@ -222,6 +309,11 @@ with gr.Blocks(title="AI Novel Generator") as demo:
             num_chapters = gr.Number(label="Number of Chapters", value=5, precision=0)
             target_tokens = gr.Number(label="Target Tokens per Chapter", value=2000, precision=0)
             
+            with gr.Accordion("⚙️ Generation Parameters", open=False):
+                temperature = gr.Slider(label="Temperature", minimum=0.0, maximum=2.0, step=0.1, value=0.8)
+                top_p = gr.Slider(label="Top-P", minimum=0.0, maximum=1.0, step=0.05, value=0.95)
+                repetition_penalty = gr.Slider(label="Repetition Penalty", minimum=1.0, maximum=2.0, step=0.05, value=1.1)
+
             gr.Markdown("---")
             gr.Markdown("### 📦 Batch Mode")
             with gr.Group():
@@ -243,10 +335,20 @@ with gr.Blocks(title="AI Novel Generator") as demo:
     output_text = gr.Textbox(label="4. Generated Novel Content", lines=20, interactive=False)
     download_link = gr.File(label="5. Download Full Novel (.txt)")
 
+    # Save prompt event
+    save_prompt_btn.click(
+        fn=save_system_prompt,
+        inputs=[system_prompt],
+        outputs=[system_status]
+    )
+
     # Plot click event
     plot_click = plot_btn.click(
         fn=generate_plot_fn,
-        inputs=[api_base, model_name, system_prompt, plot_seed, num_chapters, language],
+        inputs=[
+            api_base, model_name, system_prompt, plot_seed, num_chapters, language,
+            temperature, top_p, repetition_penalty
+        ],
         outputs=[plot_output]
     )
     stop_plot_btn.click(fn=None, inputs=None, outputs=None, cancels=[plot_click])
@@ -254,7 +356,10 @@ with gr.Blocks(title="AI Novel Generator") as demo:
     # Novel click event
     novel_click = generate_btn.click(
         fn=generate_novel,
-        inputs=[api_base, model_name, system_prompt, plot_output, num_chapters, target_tokens, language],
+        inputs=[
+            api_base, model_name, system_prompt, plot_output, num_chapters, target_tokens, language,
+            temperature, top_p, repetition_penalty
+        ],
         outputs=[output_text, download_link]
     )
     stop_btn.click(fn=None, inputs=None, outputs=None, cancels=[novel_click])
@@ -262,7 +367,10 @@ with gr.Blocks(title="AI Novel Generator") as demo:
     # Batch click event
     batch_click = batch_start_btn.click(
         fn=batch_process,
-        inputs=[api_base, model_name, system_prompt, plot_seed, num_chapters, target_tokens, language, batch_count],
+        inputs=[
+            api_base, model_name, system_prompt, plot_seed, num_chapters, target_tokens, language, batch_count,
+            temperature, top_p, repetition_penalty
+        ],
         outputs=[plot_output, output_text, download_link]
     )
     batch_stop_btn.click(fn=None, inputs=None, outputs=None, cancels=[batch_click])

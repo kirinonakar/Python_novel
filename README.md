@@ -49,18 +49,38 @@ A powerful, local-first AI novel generator that leverages LM Studio's OpenAI-com
    pip install -r requirements.txt
    ```
 
-## Configuration
+## Narrative Generation Workflows
+
+You can generate your novel using two distinct workflows:
+
+### Workflow A: Manual Full-Control (Recommended)
+This mode allows you to refine the story's direction before final generation.
+1.  **Input Initial Idea**: Enter a brief concept in the "Initial Idea / Seed" box.
+2.  **Generate Plot**: Click **1. Generate Plot Outline**. The AI will create a chapter-by-chapter summary.
+3.  **Review & Edit**: **(Crucial Step)** You can manually edit the generated plot in the "2. Editable Plot Outline" box to fix inconsistencies or add specific plot points.
+4.  **Start Generation**: Click **3. Start Novel Generation**. The AI will follow your refined plot exactly, chapter by chapter.
+
+### Workflow B: Automated Batch Mode
+Perfect for creating multiple variations or generating large volumes of content automatically.
+1.  **Input Idea & Batch Count**: Enter your initial idea and the number of independent novels you want to create (e.g., 5).
+2.  **Launch**: Click **🚀 Batch Start**.
+3.  **Automatic Execution**: The system will automatically:
+    - Generate a unique plot outline for each batch iteration.
+    - Immediately start generating the novel based on that specific plot.
+    - Save each completed novel as a separate `.txt` file in the `output/` directory.
+
+## Configuration & Advanced Settings
 
 ### System Prompt (`system_prompt.txt`)
 The application automatically loads the initial system prompt from `system_prompt.txt` at startup. 
-- Edit this file to define the global persona, tone, and constraints of your AI novelist.
+- Edit this file or the UI text box to define the global persona, tone, and constraints of your AI novelist.
+- Click the **💾 Save** button next to the system prompt to overwrite the local file for future sessions.
 
-### Batch Mode
-The **Batch Mode** allows you to generate multiple independent novels from the same initial seed automatically.
-1.  Enter your **Batch Count** (e.g., 5).
-2.  Click **🚀 Batch Start**.
-3.  The system will generate a unique plot and a full novel for each batch iteration sequentially.
-4.  Each generated novel is saved as a separate file in the `output/` directory.
+### Generation Parameters
+Adjust these in the "⚙️ Generation Parameters" accordion:
+- **Temperature**: Higher values (e.g., 1.2) increase creativity, while lower values (e.g., 0.5) make the output more focused and predictable.
+- **Top-P**: Controls the diversity of the vocabulary.
+- **Repetition Penalty**: Helps prevent the model from repeating the same phrases or sentences.
 
 ## Usage
 
