@@ -2,6 +2,15 @@ import gradio as gr
 from openai import OpenAI
 import os
 
+def load_system_prompt(filename="system_prompt.txt"):
+    if os.path.exists(filename):
+        try:
+            with open(filename, "r", encoding="utf-8") as f:
+                return f.read().strip()
+        except Exception:
+            pass
+    return "You are a professional novelist. Write engaging and immersive stories."
+
 def generate_plot_fn(
     api_base, 
     model_name, 
@@ -162,7 +171,7 @@ with gr.Blocks(title="AI Novel Generator") as demo:
             model_name = gr.Textbox(label="Model Name", value="google/gemma-4-26b-a4b")
             system_prompt = gr.Textbox(
                 label="System Prompt", 
-                value="You are a professional novelist. Write engaging and immersive stories.",
+                value=load_system_prompt(),
                 lines=3
             )
             language = gr.Radio(["Korean", "Japanese"], label="Language", value="Korean")
