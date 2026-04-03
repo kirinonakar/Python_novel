@@ -24,6 +24,7 @@ def generate_plot_fn(
         f"Please include specific plot points for each of the {int(num_chapters)} chapters."
     )
     
+    plot_content = ""
     try:
         stream = client.chat.completions.create(
             model=model_name,
@@ -31,16 +32,21 @@ def generate_plot_fn(
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": prompt}
             ],
-            stream=True
+            stream=True,
+            timeout=60.0
         )
         
-        plot_content = ""
+        chunk_count = 0
         for chunk in stream:
-            if chunk.choices[0].delta.content:
+            if chunk.choices and chunk.choices[0].delta.content:
                 plot_content += chunk.choices[0].delta.content
-                yield plot_content
+                chunk_count += 1
+                if chunk_count % 5 == 0:  # Throttling
+                    yield plot_content
+        
+        yield plot_content  # Final yield
     except Exception as e:
-        yield f"[Error]: {str(e)}"
+        yield plot_content + f"\n\n[Generation Stoppped/Error]: {str(e)}"
 
 def get_next_filename(directory, prefix="novel_", extension=".txt"):
     if not os.path.exists(directory):
@@ -98,26 +104,33 @@ def generate_novel(
 
         temp_history = history + [{"role": "user", "content": prompt}]
         
+        chapter_text = ""
         try:
             stream = client.chat.completions.create(
                 model=model_name,
                 messages=temp_history,
-                max_tokens=target_tokens + 500,
+                max_tokens=max(int(target_tokens) + 1000, 4096), # Larger buffer for cut-offs
                 stream=True,
+                timeout=120.0 # Long timeout for creative writing
             )
             
             current_chapter_title = f"\n\n# 제 {ch}장\n\n" if language == "Korean" else f"\n\n# 第 {ch} 章\n\n"
             full_text += current_chapter_title
             yield full_text, None
             
-            chapter_text = ""
+            chunk_count = 0
             for chunk in stream:
-                if chunk.choices[0].delta.content:
+                if chunk.choices and chunk.choices[0].delta.content:
                     content = chunk.choices[0].delta.content
                     chapter_text += content
-                    yield full_text + chapter_text, None
+                    chunk_count += 1
+                    # Yield more frequently at the start, then throttle to reduce lag
+                    if chunk_count < 10 or chunk_count % 10 == 0:
+                        yield full_text + chapter_text, None
             
             full_text += chapter_text
+            yield full_text, None # Ensure end of chapter is shown
+            
             chapter_contents.append(chapter_text)
             
             # Keep history manageable
@@ -127,7 +140,8 @@ def generate_novel(
                 history = [history[0]] + history[-9:]
             
         except Exception as e:
-            yield full_text + f"\n\n[Generation Stoppped/Error]: {str(e)}", None
+            # Append error message instead of replacing the entire content
+            yield full_text + chapter_text + f"\n\n[Generation Stoppped/Error]: {str(e)}", None
             break
 
     # Save to file in output directory with sequential numbering
