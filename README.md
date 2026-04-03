@@ -6,7 +6,7 @@ A powerful, local-first AI novel generator that leverages LM Studio's OpenAI-com
 
 - **Sequential Generation**: Maintains narrative continuity by including previous chapter context in each new generation.
 - **Customizable Structure**: Set your preferred plot seed, number of chapters, and target token length.
-- **Multi-language Support**: Select between **Korean** and **Japanese** for your story.
+- **Multi-language Support**: Select between **Korean**, **Japanese** and **English** for your story.
 - **Real-time Streaming**: Watch the AI write your novel in real-time within the Gradio interface.
 - **Direct Export**: Automatically bundles all generated chapters into a single `.txt` file for easy download.
 - **Sequential Output Storage**: All generated novels are automatically saved in the `output/` folder with incremental numbering (e.g., `novel_001.txt`, `novel_002.txt`), ensuring your work is never overwritten.
@@ -48,6 +48,19 @@ A powerful, local-first AI novel generator that leverages LM Studio's OpenAI-com
    ```bash
    pip install -r requirements.txt
    ```
+
+## Configuration
+
+### System Prompt (`system_prompt.txt`)
+The application automatically loads the initial system prompt from `system_prompt.txt` at startup. 
+- Edit this file to define the global persona, tone, and constraints of your AI novelist.
+
+### Batch Mode
+The **Batch Mode** allows you to generate multiple independent novels from the same initial seed automatically.
+1.  Enter your **Batch Count** (e.g., 5).
+2.  Click **🚀 Batch Start**.
+3.  The system will generate a unique plot and a full novel for each batch iteration sequentially.
+4.  Each generated novel is saved as a separate file in the `output/` directory.
 
 ## Usage
 

@@ -123,7 +123,12 @@ def generate_novel(
                 timeout=120.0 # Long timeout for creative writing
             )
             
-            current_chapter_title = f"\n\n# 제 {ch}장\n\n" if language == "Korean" else f"\n\n# 第 {ch} 章\n\n"
+            if language == "Korean":
+                current_chapter_title = f"\n\n# 제 {ch}장\n\n"
+            elif language == "Japanese":
+                current_chapter_title = f"\n\n# 第 {ch} 章\n\n"
+            else:
+                current_chapter_title = f"\n\n# Chapter {ch}\n\n"
             full_text += current_chapter_title
             yield full_text, None
             
@@ -161,6 +166,32 @@ def generate_novel(
     
     yield full_text, file_path
 
+def batch_process(
+    api_base, 
+    model_name, 
+    system_prompt, 
+    plot_seed, 
+    num_chapters, 
+    target_tokens, 
+    language, 
+    batch_count
+):
+    batch_count = int(batch_count)
+    for i in range(batch_count):
+        # 1. Generate Plot
+        plot_content = ""
+        plot_gen = generate_plot_fn(api_base, model_name, system_prompt, plot_seed, num_chapters, language)
+        for p in plot_gen:
+            plot_content = p
+            yield plot_content, f"Batch {i+1}/{batch_count} - Generating plot...", None
+            
+        # 2. Generate Novel from that plot
+        novel_gen = generate_novel(api_base, model_name, system_prompt, plot_content, num_chapters, target_tokens, language)
+        for n_text, n_file in novel_gen:
+            # Prepend batch status to novel text for clarity
+            status_prefix = f"### [Batch {i+1}/{batch_count} In Progress]\n\n"
+            yield plot_content, status_prefix + n_text, n_file
+
 # Gradio Interface
 with gr.Blocks(title="AI Novel Generator") as demo:
     gr.Markdown("# 🖋️ AI Novel Generator (LM Studio)")
@@ -184,12 +215,20 @@ with gr.Blocks(title="AI Novel Generator") as demo:
                 value=load_system_prompt(),
                 lines=3
             )
-            language = gr.Radio(["Korean", "Japanese"], label="Language", value="Korean")
+            language = gr.Radio(["Korean", "Japanese", "English"], label="Language", value="Korean")
             
         with gr.Column(scale=1):
             plot_seed = gr.Textbox(label="Initial Idea / Seed", placeholder="Enter the main idea...", lines=3)
             num_chapters = gr.Number(label="Number of Chapters", value=5, precision=0)
             target_tokens = gr.Number(label="Target Tokens per Chapter", value=2000, precision=0)
+            
+            gr.Markdown("---")
+            gr.Markdown("### 📦 Batch Mode")
+            with gr.Group():
+                with gr.Row():
+                    batch_count = gr.Number(label="Batch Count", value=1, precision=0, minimum=1)
+                    batch_start_btn = gr.Button("🚀 Batch Start", variant="primary")
+                    batch_stop_btn = gr.Button("⏹️ Stop", variant="stop")
             
     with gr.Row():
         plot_btn = gr.Button("1. Generate Plot Outline", variant="secondary")
@@ -219,6 +258,14 @@ with gr.Blocks(title="AI Novel Generator") as demo:
         outputs=[output_text, download_link]
     )
     stop_btn.click(fn=None, inputs=None, outputs=None, cancels=[novel_click])
+
+    # Batch click event
+    batch_click = batch_start_btn.click(
+        fn=batch_process,
+        inputs=[api_base, model_name, system_prompt, plot_seed, num_chapters, target_tokens, language, batch_count],
+        outputs=[plot_output, output_text, download_link]
+    )
+    batch_stop_btn.click(fn=None, inputs=None, outputs=None, cancels=[batch_click])
 
 if __name__ == "__main__":
     demo.queue().launch(inbrowser=True, theme=gr.themes.Soft())
