@@ -31,7 +31,7 @@ def summarize_chapter(client, model, chapter_text, language, temperature=0.5):
             model=model,
             messages=[{"role": "user", "content": prompt}],
             temperature=temperature,
-            max_tokens=500
+            max_tokens=2000
         )
         return response.choices[0].message.content.strip()
     except Exception:
@@ -76,6 +76,42 @@ def apply_preset(preset_name):
     if preset_name in SYSTEM_PROMPT_PRESETS:
         return SYSTEM_PROMPT_PRESETS[preset_name]
     return ""
+
+def generate_random_seed_fn(api_base, model_name, system_prompt, language, temperature=0.9, top_p=0.95):
+    # 1. 클릭 즉시 UI에 피드백을 줍니다.
+    yield "⏳ 시드를 구상하고 있습니다. 잠시만 기다려주세요..."
+    
+    if not api_base:
+        api_base = "http://localhost:1234/v1"
+    if not model_name:
+        model_name = "google/gemma-4-26b-a4b"
+        
+    client = OpenAI(base_url=api_base, api_key="lm-studio")
+    
+    prompt = (
+        f"Based on your assigned writing style, genre, and persona in the system prompt, "
+        f"brainstorm a highly creative, unique, and engaging initial plot seed (core idea) for a new novel. "
+        f"Write the seed in {language}. "
+        f"Keep it concise (about 3-5 sentences). "
+        f"Output ONLY the plot seed text. Do not include titles, greetings, or meta-commentary."
+    )
+    
+    try:
+        response = client.chat.completions.create(
+            model=model_name,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=max(0.8, float(temperature)), 
+            top_p=float(top_p),
+            max_tokens=2000
+        )
+        # 2. 결과가 나오면 텍스트 박스를 결과물로 덮어씌웁니다.
+        yield response.choices[0].message.content.strip()
+    except Exception as e:
+        # 에러가 발생하면 에러 내용을 텍스트 박스에 띄워줍니다.
+        yield f"❌ [Error] 시드 생성 실패: {str(e)}"
 
 def generate_plot_fn(
     api_base, 
@@ -326,7 +362,10 @@ with gr.Blocks(title="AI Novel Generator") as demo:
             language = gr.Radio(["Korean", "Japanese", "English"], label="Language", value="Korean")
             
         with gr.Column(scale=1):
-            plot_seed = gr.Textbox(label="Initial Idea / Seed", placeholder="Enter the main idea...", lines=3)
+            with gr.Row():
+                plot_seed = gr.Textbox(label="Initial Idea / Seed", placeholder="Enter the main idea or auto-generate...", lines=3, scale=4)
+                auto_seed_btn = gr.Button("🎲 Auto-Generate Seed", scale=1)
+            
             num_chapters = gr.Number(label="Number of Chapters", value=5, precision=0)
             target_tokens = gr.Number(label="Target Tokens per Chapter", value=2000, precision=0)
             
@@ -380,6 +419,16 @@ with gr.Blocks(title="AI Novel Generator") as demo:
         outputs=[plot_output]
     )
     stop_plot_btn.click(fn=None, inputs=None, outputs=None, cancels=[plot_click])
+    
+    # Auto-generate seed event
+    auto_seed_btn.click(
+        fn=generate_random_seed_fn,
+        inputs=[
+            api_base, model_name, system_prompt, language, 
+            temperature, top_p
+        ],
+        outputs=[plot_seed]
+    )
     
     # Novel click event
     novel_click = generate_btn.click(
