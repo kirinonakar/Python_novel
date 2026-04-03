@@ -62,6 +62,21 @@ def split_plot_into_chapters(plot_seed, num_chapters):
             
     return chapter_plots
 
+SYSTEM_PROMPT_PRESETS = {
+    "Standard / Literary Fiction": 'You are an award-winning, bestselling novelist known for elegant prose, deep psychological insight, and compelling character arcs. \nYour writing style is immersive and vivid. Strictly adhere to the "Show, Don\'t Tell" principle—describe sensory details, actions, and character reactions rather than simply stating emotions. \nMaintain a consistent tone, ensure natural-sounding dialogue, and pace the narrative to keep the reader deeply engaged. Never use meta-commentary or acknowledge that you are an AI.',
+    "Web Novel / Light Novel": 'You are a top-ranking web novel author known for highly addictive pacing, dynamic character interactions, and gripping cliffhangers. \nYour writing style is accessible, fast-paced, and highly entertaining. \nUse frequent paragraph breaks to make the text easy to read on mobile devices. Focus heavily on punchy, expressive dialogue and characters\' internal thoughts. Keep the plot moving forward dynamically, and avoid overly dense or tedious descriptions. Every chapter must end in a way that makes the reader desperate to read the next.',
+    "Epic / Dark Fantasy": 'You are a master of epic and dark fantasy. You excel at intricate world-building, crafting gritty atmospheres, and writing high-stakes conflicts. \nUse rich, evocative, and sometimes archaic vocabulary to bring the fantasy world to life. Describe the environments, magic systems, and battles with visceral sensory details. Characters should be morally complex and face difficult dilemmas. The tone should be serious, atmospheric, and immersive.',
+    "Romance / Emotional Drama": 'You are a bestselling romance and drama author. Your greatest strength lies in capturing the intricate emotional dynamics, chemistry, and romantic tension between characters. \nFocus deeply on micro-expressions, body language, and the unspoken feelings between characters. Write dialogue that is witty, passionate, or emotionally raw, depending on the scene. Build the emotional stakes gradually, making the readers deeply invested in the characters\' relationships.',
+    "Sci-Fi / Thriller": 'You are a master of science fiction and suspense thrillers. Your prose is sharp, precise, and gripping. \nFocus on building relentless suspense and a creeping sense of tension. Describe technology, environments, or action sequences with clear, logical, yet cinematic detail. Keep the sentences relatively punchy during action or tense scenes to accelerate the pacing. Leave the readers constantly guessing what will happen next.'
+}
+
+def apply_preset(preset_name):
+    if preset_name == "Custom (File Default)":
+        return load_system_prompt()
+    if preset_name in SYSTEM_PROMPT_PRESETS:
+        return SYSTEM_PROMPT_PRESETS[preset_name]
+    return ""
+
 def generate_plot_fn(
     api_base, 
     model_name, 
@@ -293,13 +308,19 @@ with gr.Blocks(title="AI Novel Generator") as demo:
                 allow_custom_value=True
             )
             with gr.Row():
-                system_prompt = gr.Textbox(
-                    label="System Prompt", 
-                    value=load_system_prompt(),
-                    lines=4,
+                system_prompt_preset = gr.Dropdown(
+                    choices=["Custom (File Default)"] + list(SYSTEM_PROMPT_PRESETS.keys()), 
+                    label="System Prompt Presets", 
+                    value="Custom (File Default)",
                     scale=4
                 )
                 save_prompt_btn = gr.Button("💾 Save", scale=1)
+            
+            system_prompt = gr.Textbox(
+                label="System Prompt Content", 
+                value=load_system_prompt(),
+                lines=5
+            )
             
             system_status = gr.Textbox(label="Save Status", interactive=False, placeholder="Status will appear here...")
             language = gr.Radio(["Korean", "Japanese", "English"], label="Language", value="Korean")
@@ -334,6 +355,13 @@ with gr.Blocks(title="AI Novel Generator") as demo:
     
     output_text = gr.Textbox(label="4. Generated Novel Content", lines=20, interactive=False)
     download_link = gr.File(label="5. Download Full Novel (.txt)")
+
+    # Preset change event
+    system_prompt_preset.change(
+        fn=apply_preset,
+        inputs=[system_prompt_preset],
+        outputs=[system_prompt]
+    )
 
     # Save prompt event
     save_prompt_btn.click(
