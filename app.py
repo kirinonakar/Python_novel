@@ -379,6 +379,7 @@ with gr.Blocks(title="AI Novel Generator") as demo:
             with gr.Group():
                 with gr.Row():
                     batch_count = gr.Number(label="Batch Count", value=1, precision=0, minimum=1)
+                with gr.Row():
                     batch_start_btn = gr.Button("🚀 Batch Start", variant="primary")
                     batch_stop_btn = gr.Button("⏹️ Stop", variant="stop")
             

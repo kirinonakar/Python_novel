@@ -10,7 +10,8 @@ A powerful, local-first AI novel generator that leverages LM Studio's OpenAI-com
 - **Real-time Streaming**: Watch the AI write your novel in real-time within the Gradio interface.
 - **Direct Export**: Automatically bundles all generated chapters into a single `.txt` file for easy download.
 - **Sequential Output Storage**: All generated novels are automatically saved in the `output/` folder with incremental numbering (e.g., `novel_001.txt`, `novel_002.txt`), ensuring your work is never overwritten.
-- **Configurable System Prompt**: Fine-tune the AI's persona and writing style via `system_prompt.txt`.
+- **Configurable System Prompt**: Fine-tune the AI's persona via `system_prompt.txt` or choose from curated presets (Literary, Web Novel, Fantasy, Romance, Sci-Fi).
+- **AI-powered Seed Generation**: Instantly brainstorm creative story ideas based on your chosen writing style and language.
 - **Flexible Model Selection**: Choose from preset optimized models or enter a custom model identifier.
 
 ## Prerequisites
@@ -55,7 +56,7 @@ You can generate your novel using two distinct workflows:
 
 ### Workflow A: Manual Full-Control (Recommended)
 This mode allows you to refine the story's direction before final generation.
-1.  **Input Initial Idea**: Enter a brief concept in the "Initial Idea / Seed" box.
+1.  **Input Initial Idea**: Enter a brief concept in the "Initial Idea / Seed" box, or click **🎲 Auto-Generate Seed** to let the AI brainstorm a unique starting point for you.
 2.  **Generate Plot**: Click **1. Generate Plot Outline**. The AI will create a chapter-by-chapter summary.
 3.  **Review & Edit**: **(Crucial Step)** You can manually edit the generated plot in the "2. Editable Plot Outline" box to fix inconsistencies or add specific plot points.
 4.  **Start Generation**: Click **3. Start Novel Generation**. The AI will follow your refined plot exactly, chapter by chapter.
@@ -74,7 +75,13 @@ Perfect for creating multiple variations or generating large volumes of content 
 ### System Prompt (`system_prompt.txt`)
 The application automatically loads the initial system prompt from `system_prompt.txt` at startup. 
 - Edit this file or the UI text box to define the global persona, tone, and constraints of your AI novelist.
-- Click the **💾 Save** button next to the system prompt to overwrite the local file for future sessions.
+- Use the **System Prompt Presets** dropdown to quickly switch between different writing styles (e.g., Epic Fantasy vs. Web Novel).
+- Click the **💾 Save** button next to the system prompt to overwrite the local `system_prompt.txt` with your current settings.
+
+### AI Seed Generation (🎲)
+If you're facing writer's block, the **Auto-Generate Seed** feature uses your current system prompt settings to brainstorm a creative concept. 
+- It ensures the generated idea matches the specific tone and genre defined in your persona.
+- The output is automatically placed into the "Initial Idea / Seed" box, ready for plot generation.
 
 ### Generation Parameters
 Adjust these in the "⚙️ Generation Parameters" accordion:
