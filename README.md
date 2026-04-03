@@ -10,13 +10,19 @@ A powerful, local-first AI novel generator that leverages LM Studio's OpenAI-com
 - **Real-time Streaming**: Watch the AI write your novel in real-time within the Gradio interface.
 - **Direct Export**: Automatically bundles all generated chapters into a single `.txt` file for easy download.
 - **Sequential Output Storage**: All generated novels are automatically saved in the `output/` folder with incremental numbering (e.g., `novel_001.txt`, `novel_002.txt`), ensuring your work is never overwritten.
-- **Configurable System Prompt**: Fine-tune the AI's persona and writing style.
+- **Configurable System Prompt**: Fine-tune the AI's persona and writing style via `system_prompt.txt`.
+- **Flexible Model Selection**: Choose from preset optimized models or enter a custom model identifier.
 
 ## Prerequisites
 
 - **Python 3.10+**
 - **LM Studio**: Running a local server (default port `1234`).
-- **Recommended Model**: `google/gemma-4-26b-a4b` (or any other compatible model).
+- **Supported Models**: 
+  - `google/gemma-4-26b-a4b` (Default)
+  - `gemma-4-31b-it`
+  - `qwen/qwen3.5-35b-a3b`
+  - `qwen3.5-27b`
+  - (Any other custom model identifier)
 
 ## Installation
 

@@ -168,7 +168,17 @@ with gr.Blocks(title="AI Novel Generator") as demo:
     with gr.Row():
         with gr.Column(scale=1):
             api_base = gr.Textbox(label="LM Studio API Base", value="http://localhost:1234/v1")
-            model_name = gr.Textbox(label="Model Name", value="google/gemma-4-26b-a4b")
+            model_name = gr.Dropdown(
+                label="Model Name", 
+                choices=[
+                    "google/gemma-4-26b-a4b", 
+                    "gemma-4-31b-it", 
+                    "qwen/qwen3.5-35b-a3b", 
+                    "qwen3.5-27b"
+                ],
+                value="google/gemma-4-26b-a4b",
+                allow_custom_value=True
+            )
             system_prompt = gr.Textbox(
                 label="System Prompt", 
                 value=load_system_prompt(),
