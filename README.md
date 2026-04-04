@@ -1,6 +1,7 @@
 # AI Novel Generator (Gradio + LM Studio)
 
 A powerful, local-first AI novel generator that leverages LM Studio's OpenAI-compatible API to create immersive stories chapter-by-chapter.
+![UI Screenshot](screenshot.png)
 
 ## Features
 
