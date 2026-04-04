@@ -3,6 +3,18 @@ from openai import OpenAI
 import os
 import re
 
+def clean_thought_tags(text):
+    """
+    Remove internal reasoning tags like <|channel>thought ... <channel|>
+    commonly used in Gemma 4 and similar reasoning models.
+    """
+    # Pattern for complete blocks
+    text = re.sub(r'<\|channel>thought.*?<channel\|>', '', text, flags=re.DOTALL)
+    # Pattern for unclosed blocks at the end of a stream
+    text = re.sub(r'<\|channel>thought.*$', '', text, flags=re.DOTALL)
+    # Individual tokens that might leak
+    text = text.replace('<|channel>thought', '').replace('<channel|>', '')
+    return text.strip()
 def load_system_prompt(filename="system_prompt.txt"):
     if os.path.exists(filename):
         try:
@@ -93,7 +105,8 @@ def generate_random_seed_fn(api_base, model_name, system_prompt, language, tempe
         f"brainstorm a highly creative, unique, and engaging initial plot seed (core idea) for a new novel. "
         f"Write the seed in {language}. "
         f"Keep it concise (about 3-5 sentences). "
-        f"Output ONLY the plot seed text. Do not include titles, greetings, or meta-commentary."
+        f"Output ONLY the plot seed text. "
+        f"Do not include titles, greetings, meta-commentary, or any internal reasoning tags like <|channel>thought."
     )
     
     try:
@@ -108,10 +121,15 @@ def generate_random_seed_fn(api_base, model_name, system_prompt, language, tempe
             max_tokens=2000
         )
         # 2. 결과가 나오면 텍스트 박스를 결과물로 덮어씌웁니다.
-        yield response.choices[0].message.content.strip()
+        content = clean_thought_tags(response.choices[0].message.content)
+        yield content
     except Exception as e:
-        # 에러가 발생하면 에러 내용을 텍스트 박스에 띄워줍니다.
-        yield f"❌ [Error] 시드 생성 실패: {str(e)}"
+        error_msg = str(e)
+        if "Failed to parse input at pos 0" in error_msg:
+            error_hint = "\n💡 [Hint] Model mismatch detected. Ensure LM Studio chat template is correctly set for Gemma 4."
+            yield f"❌ [Error] {error_msg}{error_hint}"
+        else:
+            yield f"❌ [Error] 시드 생성 실패: {error_msg}"
 
 def generate_plot_fn(
     api_base, 
@@ -135,7 +153,8 @@ def generate_plot_fn(
         f"Based on the following seed, create a detailed chapter-by-chapter plot outline for a {num_chapters}-chapter novel.\n"
         f"Language: {language}\n"
         f"Seed: {plot_seed}\n"
-        f"Please include specific plot points for each of the {int(num_chapters)} chapters."
+        f"Please include specific plot points for each of the {int(num_chapters)} chapters. "
+        f"Output ONLY the plot outline, without any internal reasoning or <|channel>thought blocks."
     )
     
     plot_content = ""
@@ -158,11 +177,16 @@ def generate_plot_fn(
                 plot_content += chunk.choices[0].delta.content
                 chunk_count += 1
                 if chunk_count % 5 == 0:  # Throttling
-                    yield plot_content
+                    yield clean_thought_tags(plot_content)
         
-        yield plot_content  # Final yield
+        yield clean_thought_tags(plot_content)  # Final yield
     except Exception as e:
-        yield plot_content + f"\n\n[Generation Stoppped/Error]: {str(e)}"
+        error_msg = str(e)
+        current_plot = clean_thought_tags(plot_content)
+        if "Failed to parse input at pos 0" in error_msg:
+            yield current_plot + f"\n\n[Generation Stoppped/Error]: {error_msg}\n\n💡 [Tip] This 'pos 0' error is common with Gemma 4 in LM Studio. Try restarting the model server or checking the Chat Template settings."
+        else:
+            yield current_plot + f"\n\n[Generation Stoppped/Error]: {error_msg}"
 
 def get_next_filename(directory, prefix="novel_", extension=".txt"):
     if not os.path.exists(directory):
@@ -235,7 +259,8 @@ def generate_novel(
         prompt += f"CRITICAL INSTRUCTION:\n"
         prompt += f"1. Write ONLY Chapter {ch}. Do not rush into future chapters.\n"
         prompt += f"2. Target length: ~{int(target_tokens)} tokens.\n"
-        prompt += f"3. Output ONLY the story text. No meta-talk or phrases like 'Sure, here is chapter...'."
+        prompt += f"3. Output ONLY the story text. No meta-talk or phrases like 'Sure, here is chapter...'.\n"
+        prompt += f"4. NEVER use internal reasoning tags, thinking blocks, or <|channel>thought tokens."
 
         try:
             chapter_text = ""
@@ -269,9 +294,9 @@ def generate_novel(
                     chunk_count += 1
                     # Yield more frequently at the start, then throttle to reduce lag
                     if chunk_count < 10 or chunk_count % 10 == 0:
-                        yield full_text + chapter_text, None
+                        yield full_text + clean_thought_tags(chapter_text), None
             
-            full_text += chapter_text
+            full_text += clean_thought_tags(chapter_text)
             yield full_text, None # Ensure end of chapter is shown
             
             # Summarize this chapter for future context
@@ -279,8 +304,13 @@ def generate_novel(
             chapter_summaries.append(summary)
             
         except Exception as e:
-            # Append error message instead of replacing the entire content
-            yield full_text + chapter_text + f"\n\n[Generation Stopped/Error]: {str(e)}", None
+            error_msg = str(e)
+            current_text = full_text + clean_thought_tags(chapter_text)
+            hint = ""
+            if "Failed to parse input at pos 0" in error_msg:
+                hint = "\n\n💡 [Tip] Gemma 4 parsing error (pos 0). This usually requires adjusting the Chat Template in LM Studio to support reasoning tokens or disabling prompt caching."
+            
+            yield current_text + f"\n\n[Generation Stopped/Error]: {error_msg}{hint}", None
             break
 
     # Save to file in output directory with sequential numbering
