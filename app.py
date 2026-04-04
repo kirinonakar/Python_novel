@@ -74,6 +74,36 @@ def split_plot_into_chapters(plot_seed, num_chapters):
             
     return chapter_plots
 
+def split_full_text_into_chapters(text, language):
+    import re
+    # Remove error messages
+    text = re.sub(r'\n\n\[Generation Stopped/Error\].*$', '', text, flags=re.DOTALL)
+    
+    if language == "Korean":
+        pattern = r'# 제 (\d+)장'
+    elif language == "Japanese":
+        pattern = r'# 第 (\d+) 章'
+    else:
+        pattern = r'# Chapter (\d+)'
+        
+    matches = list(re.finditer(pattern, text))
+    chapters = {}
+    for i in range(len(matches)):
+        try:
+            ch_num = int(matches[i].group(1))
+            start = matches[i].end()
+            end = matches[i+1].start() if i+1 < len(matches) else len(text)
+            chapters[ch_num] = text[start:end].strip()
+        except:
+            continue
+    return chapters
+
+def suggest_next_chapter_fn(text, language):
+    chapters = split_full_text_into_chapters(text, language)
+    if not chapters:
+        return 1
+    return max(chapters.keys()) + 1
+
 SYSTEM_PROMPT_PRESETS = {
     "Standard / Literary Fiction": 'You are an award-winning, bestselling novelist known for elegant prose, deep psychological insight, and compelling character arcs. \nYour writing style is immersive and vivid. Strictly adhere to the "Show, Don\'t Tell" principle—describe sensory details, actions, and character reactions rather than simply stating emotions. \nMaintain a consistent tone, ensure natural-sounding dialogue, and pace the narrative to keep the reader deeply engaged. Never use meta-commentary or acknowledge that you are an AI.',
     "Web Novel / Light Novel": 'You are a top-ranking web novel author known for highly addictive pacing, dynamic character interactions, and gripping cliffhangers. \nYour writing style is accessible, fast-paced, and highly entertaining. \nUse frequent paragraph breaks to make the text easy to read on mobile devices. Focus heavily on punchy, expressive dialogue and characters\' internal thoughts. Keep the plot moving forward dynamically, and avoid overly dense or tedious descriptions. Every chapter must end in a way that makes the reader desperate to read the next.',
@@ -214,6 +244,8 @@ def generate_novel(
     num_chapters, 
     target_tokens, 
     language,
+    start_chapter=1,
+    existing_content="",
     temperature=0.8,
     top_p=0.95,
     repetition_penalty=1.1
@@ -228,10 +260,33 @@ def generate_novel(
     full_text = ""
     chapter_summaries = []
     
+    # Resuming logic
+    start_chapter = int(start_chapter)
+    if start_chapter > 1 and existing_content:
+        yield "🔄 Resuming generation... Reconstructing context from existing chapters. Please wait.", None
+        chapters_map = split_full_text_into_chapters(existing_content, language)
+        
+        rebuilt_text = ""
+        for ch in range(1, start_chapter):
+            if language == "Korean": header = f"\n\n# 제 {ch}장\n\n"
+            elif language == "Japanese": header = f"\n\n# 第 {ch} 章\n\n"
+            else: header = f"\n\n# Chapter {ch}\n\n"
+            
+            content = chapters_map.get(ch, "")
+            if content:
+                rebuilt_text += header + content
+                summary = summarize_chapter(client, model_name, content, language)
+                chapter_summaries.append(summary)
+            else:
+                # If a chapter is missing, we still need to keep the order for summaries
+                chapter_summaries.append("")
+        full_text = rebuilt_text
+        yield full_text + "\n\n✅ Context reconstructed. Starting generation...", None
+    
     # Pre-parse chapters from plot if possible
     chapter_plots = split_plot_into_chapters(plot_seed, int(num_chapters))
     
-    for ch in range(1, int(num_chapters) + 1):
+    for ch in range(start_chapter, int(num_chapters) + 1):
         # Build improved prompt for the current chapter
         prompt = f"You are a professional novelist writing a novel in {language}.\n\n"
         prompt += f"[Book Information]\n"
@@ -398,6 +453,9 @@ with gr.Blocks(title="AI Novel Generator") as demo:
             
             num_chapters = gr.Number(label="Number of Chapters", value=5, precision=0)
             target_tokens = gr.Number(label="Target Tokens per Chapter", value=2000, precision=0)
+            with gr.Row():
+                start_chapter = gr.Number(label="Start Chapter (for Resume)", value=1, precision=0, scale=4)
+                find_ch_btn = gr.Button("🔍 Find Next", scale=1)
             
             with gr.Accordion("⚙️ Generation Parameters", open=False):
                 temperature = gr.Slider(label="Temperature", minimum=0.0, maximum=2.0, step=0.1, value=0.8)
@@ -466,6 +524,7 @@ with gr.Blocks(title="AI Novel Generator") as demo:
         fn=generate_novel,
         inputs=[
             api_base, model_name, system_prompt, plot_output, num_chapters, target_tokens, language,
+            start_chapter, output_text,
             temperature, top_p, repetition_penalty
         ],
         outputs=[output_text, download_link]
@@ -482,6 +541,13 @@ with gr.Blocks(title="AI Novel Generator") as demo:
         outputs=[plot_output, output_text, download_link]
     )
     batch_stop_btn.click(fn=None, inputs=None, outputs=None, cancels=[batch_click])
+
+    # Find next chapter event
+    find_ch_btn.click(
+        fn=suggest_next_chapter_fn,
+        inputs=[output_text, language],
+        outputs=[start_chapter]
+    )
 
 if __name__ == "__main__":
     demo.queue().launch(inbrowser=True, theme=gr.themes.Soft())
