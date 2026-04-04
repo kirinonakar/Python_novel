@@ -2,6 +2,7 @@ import gradio as gr
 from openai import OpenAI
 import os
 import re
+import time
 
 def clean_thought_tags(text):
     """
@@ -401,14 +402,43 @@ def batch_process(
             plot_content = p
             yield plot_content, f"Batch {i+1}/{batch_count} - Generating plot...", None
             
-        # 2. Generate Novel from that plot
-        novel_gen = generate_novel(
-            api_base, model_name, system_prompt, plot_content, num_chapters, target_tokens, language,
-            temperature=temperature, top_p=top_p, repetition_penalty=repetition_penalty
-        )
-        for n_text, n_file in novel_gen:
-            status_prefix = f"### [Batch {i+1}/{batch_count} In Progress]\n\n"
-            yield plot_content, status_prefix + n_text, n_file
+        # 2. Generate Novel from that plot (with auto-resume)
+        current_novel_text = ""
+        current_novel_file = None
+        target_ch = int(num_chapters)
+        
+        while True:
+            next_ch = suggest_next_chapter_fn(current_novel_text, language)
+            if next_ch > target_ch:
+                break
+                
+            novel_gen = generate_novel(
+                api_base, model_name, system_prompt, plot_content, num_chapters, target_tokens, language,
+                start_chapter=next_ch,
+                existing_content=current_novel_text,
+                temperature=temperature, top_p=top_p, repetition_penalty=repetition_penalty
+            )
+            
+            for n_text, n_file in novel_gen:
+                current_novel_text = n_text
+                current_novel_file = n_file
+                status_prefix = f"### [Batch {i+1}/{batch_count} In Progress]\n"
+                if next_ch > 1:
+                    status_prefix += f"**(Auto-Resuming from Chapter {next_ch})**\n\n"
+                else:
+                    status_prefix += "\n"
+                yield plot_content, status_prefix + n_text, n_file
+            
+            # Check if progress was made to avoid infinite loop on persistent errors
+            new_next_ch = suggest_next_chapter_fn(current_novel_text, language)
+            if new_next_ch <= next_ch:
+                # If no new chapter was successfully added, we stop to prevent infinite retries
+                # unless we want to try a few times. For now, let's just break.
+                break
+            
+            # Small delay before resuming
+            if new_next_ch <= target_ch:
+                time.sleep(2)
 
 # Gradio Interface
 with gr.Blocks(title="AI Novel Generator") as demo:
