@@ -81,11 +81,11 @@ def split_full_text_into_chapters(text, language):
     text = re.sub(r'\n\n\[Generation Stopped/Error\].*$', '', text, flags=re.DOTALL)
     
     if language == "Korean":
-        pattern = r'# 제 (\d+)장'
+        pattern = r'(?:^|\n)# 제 (\d+)장'
     elif language == "Japanese":
-        pattern = r'# 第 (\d+) 章'
+        pattern = r'(?:^|\n)# 第 (\d+) 章'
     else:
-        pattern = r'# Chapter (\d+)'
+        pattern = r'(?:^|\n)# Chapter (\d+)'
         
     matches = list(re.finditer(pattern, text))
     chapters = {}
@@ -103,7 +103,15 @@ def suggest_next_chapter_fn(text, language):
     chapters = split_full_text_into_chapters(text, language)
     if not chapters:
         return 1
-    return max(chapters.keys()) + 1
+    
+    # 챕터라고 인식된 텍스트가 일정 길이(예: 300자) 이상이어야 실제 작성된 챕터로 인정합니다.
+    # 이는 줄거리(Outline)나 모델의 할루시네이션으로 인해 챕터 번호만 출력된 경우를 제외하기 위함입니다.
+    valid_chapters = [ch for ch, content in chapters.items() if len(content) >= 300]
+    
+    if not valid_chapters:
+        return 1
+        
+    return max(valid_chapters) + 1
 
 SYSTEM_PROMPT_PRESETS = {
     "Standard / Literary Fiction": 'You are an award-winning, bestselling novelist known for elegant prose, deep psychological insight, and compelling character arcs. \nYour writing style is immersive and vivid. Strictly adhere to the "Show, Don\'t Tell" principle—describe sensory details, actions, and character reactions rather than simply stating emotions. \nMaintain a consistent tone, ensure natural-sounding dialogue, and pace the narrative to keep the reader deeply engaged. Never use meta-commentary or acknowledge that you are an AI.',
