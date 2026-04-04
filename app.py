@@ -135,7 +135,7 @@ def generate_random_seed_fn(api_base, model_name, system_prompt, language, tempe
     if not api_base:
         api_base = "http://localhost:1234/v1"
     if not model_name:
-        model_name = "google/gemma-4-26b-a4b"
+        model_name = "gemma-4-31b-it"
         
     client = OpenAI(base_url=api_base, api_key="lm-studio")
     
@@ -184,7 +184,7 @@ def generate_plot_fn(
     if not api_base:
         api_base = "http://localhost:1234/v1"
     if not model_name:
-        model_name = "google/gemma-4-26b-a4b"
+        model_name = "gemma-4-31b-it"
     
     client = OpenAI(base_url=api_base, api_key="lm-studio")
     
@@ -262,7 +262,7 @@ def generate_novel(
     if not api_base:
         api_base = "http://localhost:1234/v1"
     if not model_name:
-        model_name = "google/gemma-4-26b-a4b"
+        model_name = "gemma-4-31b-it"
     
     client = OpenAI(base_url=api_base, api_key="lm-studio")
     
@@ -458,12 +458,12 @@ with gr.Blocks(title="AI Novel Generator") as demo:
             model_name = gr.Dropdown(
                 label="Model Name", 
                 choices=[
-                    "google/gemma-4-26b-a4b", 
                     "gemma-4-31b-it", 
+                    "google/gemma-4-26b-a4b", 
                     "qwen/qwen3.5-35b-a3b", 
                     "qwen3.5-27b"
                 ],
-                value="google/gemma-4-26b-a4b",
+                value="gemma-4-31b-it",
                 allow_custom_value=True
             )
             with gr.Row():
