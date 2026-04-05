@@ -25,6 +25,23 @@ def load_system_prompt(filename="system_prompt.txt"):
             pass
     return "You are a professional novelist. Write engaging and immersive stories."
 
+def open_output_folder():
+    output_dir = "output"
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+    # Use os.startfile for Windows, or subprocess for other OS
+    try:
+        os.startfile(os.path.abspath(output_dir))
+    except Exception:
+        import subprocess
+        import platform
+        if platform.system() == "Windows":
+            subprocess.run(["explorer", os.path.abspath(output_dir)])
+        elif platform.system() == "Darwin":
+            subprocess.run(["open", os.path.abspath(output_dir)])
+        else:
+            subprocess.run(["xdg-open", os.path.abspath(output_dir)])
+
 def save_system_prompt(content, filename="system_prompt.txt"):
     try:
         with open(filename, "w", encoding="utf-8") as f:
@@ -520,7 +537,9 @@ with gr.Blocks(title="AI Novel Generator") as demo:
         stop_btn = gr.Button("Stop Novel", variant="stop")
     
     output_text = gr.Textbox(label="4. Generated Novel Content", lines=20, interactive=False)
-    download_link = gr.File(label="5. Download Full Novel (.txt)")
+    with gr.Row():
+        download_link = gr.File(label="5. Download Full Novel (.txt)", scale=4)
+        open_folder_btn = gr.Button("📂 Open Output Folder", scale=1)
 
     # Preset change event
     system_prompt_preset.change(
@@ -585,6 +604,13 @@ with gr.Blocks(title="AI Novel Generator") as demo:
         fn=suggest_next_chapter_fn,
         inputs=[output_text, language],
         outputs=[start_chapter]
+    )
+
+    # Open folder event
+    open_folder_btn.click(
+        fn=open_output_folder,
+        inputs=[],
+        outputs=[]
     )
 
 if __name__ == "__main__":
