@@ -476,6 +476,7 @@ with gr.Blocks(title="AI Novel Generator") as demo:
                 label="Model Name", 
                 choices=[
                     "gemma-4-31b-it", 
+                    "gemma-4-31b-it-claude-opus-distill",
                     "google/gemma-4-26b-a4b", 
                     "qwen/qwen3.5-35b-a3b", 
                     "qwen3.5-27b"
