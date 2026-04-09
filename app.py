@@ -3,6 +3,12 @@ from openai import OpenAI
 import os
 import re
 import time
+import threading
+
+# Global state for batch queue
+BATCH_QUEUE = []
+QUEUE_LOCK = threading.Lock()
+
 
 def clean_thought_tags(text):
     """
@@ -465,6 +471,28 @@ def batch_process(
             if new_next_ch <= target_ch:
                 time.sleep(2)
 
+def enqueue_batch(*args):
+    with QUEUE_LOCK:
+        BATCH_QUEUE.append(args)
+        return len(BATCH_QUEUE)
+
+def run_batch_worker():
+    while True:
+        with QUEUE_LOCK:
+            if not BATCH_QUEUE:
+                break
+            params = BATCH_QUEUE.pop(0)
+        
+        # Run the existing batch_process generator with captured parameters
+        # batch_process returns (plot_output, output_text, download_link)
+        for p, t, f in batch_process(*params):
+            with QUEUE_LOCK:
+                current_count = len(BATCH_QUEUE)
+            yield p, t, f, current_count
+    
+    # Final yield to ensure queue count is 0 at the very end
+    yield gr.skip(), gr.skip(), gr.skip(), 0
+
 # Gradio Interface
 with gr.Blocks(title="AI Novel Generator") as demo:
     gr.Markdown("# 🖋️ AI Novel Generator (LM Studio)")
@@ -523,6 +551,7 @@ with gr.Blocks(title="AI Novel Generator") as demo:
             with gr.Group():
                 with gr.Row():
                     batch_count = gr.Number(label="Batch Count", value=1, precision=0, minimum=1)
+                    queue_count_display = gr.Number(label="Queue", value=0, precision=0, interactive=False, scale=1)
                 with gr.Row():
                     batch_start_btn = gr.Button("🚀 Batch Start", variant="primary")
                     batch_stop_btn = gr.Button("⏹️ Stop", variant="stop")
@@ -589,16 +618,33 @@ with gr.Blocks(title="AI Novel Generator") as demo:
     )
     stop_btn.click(fn=None, inputs=None, outputs=None, cancels=[novel_click])
 
-    # Batch click event
-    batch_click = batch_start_btn.click(
-        fn=batch_process,
+    def clear_batch_queue():
+        with QUEUE_LOCK:
+            BATCH_QUEUE.clear()
+        return 0
+
+    # Batch click event with queueing
+    batch_event = batch_start_btn.click(
+        fn=enqueue_batch,
         inputs=[
             api_base, model_name, system_prompt, plot_seed, num_chapters, target_tokens, language, batch_count,
             temperature, top_p, repetition_penalty
         ],
-        outputs=[plot_output, output_text, download_link]
+        outputs=[queue_count_display],
+        concurrency_limit=None
+    ).then(
+        fn=run_batch_worker,
+        inputs=None,
+        outputs=[plot_output, output_text, download_link, queue_count_display],
+        concurrency_limit=1
     )
-    batch_stop_btn.click(fn=None, inputs=None, outputs=None, cancels=[batch_click])
+    
+    batch_stop_btn.click(
+        fn=clear_batch_queue, 
+        inputs=None, 
+        outputs=[queue_count_display], 
+        cancels=[batch_event]
+    )
 
     # Find next chapter event
     find_ch_btn.click(

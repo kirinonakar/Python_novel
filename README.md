@@ -14,6 +14,7 @@ A powerful, local-first AI novel generator that leverages LM Studio's OpenAI-com
 - **Configurable System Prompt**: Fine-tune the AI's persona via `system_prompt.txt` or choose from curated presets (Literary, Web Novel, Fantasy, Romance, Sci-Fi).
 - **AI-powered Seed Generation**: Instantly brainstorm creative story ideas based on your chosen writing style and language.
 - **Flexible Model Selection**: Choose from preset optimized models or enter a custom model identifier.
+- **Batch Queue Management**: Add multiple batch jobs to a queue. The system automatically processes them sequentially, displaying a real-time counter of pending tasks.
 
 ## Prerequisites
 
@@ -70,6 +71,8 @@ Perfect for creating multiple variations or generating large volumes of content 
     - Generate a unique plot outline for each batch iteration.
     - Immediately start generating the novel based on that specific plot.
     - Save each completed novel as a separate `.txt` file in the `output/` directory.
+4. **Queue Management**: If you click **🚀 Batch Start** while a batch is already running, the new request will be added to the **Queue**. A counter next to the Batch Count will show the number of pending batches, and they will be processed automatically in the order they were added.
+5. **Stopping**: Click **⏹️ Stop** at any time to clear the entire queue and stop all current generation activities.
 
 ## Configuration & Advanced Settings
 
