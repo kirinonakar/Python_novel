@@ -151,7 +151,7 @@ def apply_preset(preset_name):
         return SYSTEM_PROMPT_PRESETS[preset_name]
     return ""
 
-def generate_random_seed_fn(api_base, model_name, system_prompt, language, temperature=0.9, top_p=0.95):
+def generate_random_seed_fn(api_base, model_name, system_prompt, language, temperature=1.0, top_p=0.95):
     # 1. 클릭 즉시 UI에 피드백을 줍니다.
     yield "⏳ 시드를 구상하고 있습니다. 잠시만 기다려주세요..."
     
@@ -178,7 +178,7 @@ def generate_random_seed_fn(api_base, model_name, system_prompt, language, tempe
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": prompt}
             ],
-            temperature=max(0.8, float(temperature)), 
+            temperature=float(temperature), 
             top_p=float(top_p),
             max_tokens=2000
         )
@@ -200,7 +200,7 @@ def generate_plot_fn(
     plot_seed, 
     num_chapters, 
     language,
-    temperature=0.8,
+    temperature=1.0,
     top_p=0.95,
     repetition_penalty=1.1
 ):
@@ -211,12 +211,43 @@ def generate_plot_fn(
     
     client = OpenAI(base_url=api_base, api_key="lm-studio")
     
+    headers = {
+        "Korean": [
+            "1. 제목",
+            "2. 핵심 주제의식과 소설 스타일",
+            "3. 등장인물 이름, 설정",
+            "4. 세계관 설정",
+            "5. 각 장 제목과 내용, 핵심 포인트 (Include clear markers like '제 1장', '제 2장', etc. for each chapter)"
+        ],
+        "Japanese": [
+            "1. タイトル",
+            "2. 核心となるテーマと小説のスタイル",
+            "3. 登場人物の名前・設定",
+            "4. 世界観設定",
+            "5. 各章のタイトルと内容、重要ポイント (Include clear markers like '第 1 章', '第 2 章', etc. for each chapter)"
+        ],
+        "English": [
+            "1. Title",
+            "2. Core Theme and Novel Style",
+            "3. Character Names and Settings",
+            "4. World Building/Setting",
+            "5. Chapter Titles, Content, and Key Points (Include clear markers like 'Chapter 1', 'Chapter 2', etc. for each chapter)"
+        ]
+    }
+    h = headers.get(language, headers["Korean"])
+    
     prompt = (
-        f"Based on the following seed, create a detailed chapter-by-chapter plot outline for a {num_chapters}-chapter novel.\n"
-        f"Language: {language}\n"
-        f"Seed: {plot_seed}\n"
-        f"Please include specific plot points for each of the {int(num_chapters)} chapters. "
-        f"Output ONLY the plot outline, without any internal reasoning or <|channel>thought blocks."
+        f"Based on the following seed, create a detailed plot outline for a {num_chapters}-chapter novel in {language}.\n"
+        f"Seed: {plot_seed}\n\n"
+        f"FORMAT INSTRUCTIONS:\n"
+        f"Please organize the output into the following 5 sections in {language}:\n"
+        f"{h[0]}\n"
+        f"{h[1]}\n"
+        f"{h[2]}\n"
+        f"{h[3]}\n"
+        f"{h[4]}\n\n"
+        f"Ensure every section is detailed and provides a solid foundation for writing the novel.\n"
+        f"Output ONLY the plot outline based on this format, without any greetings, meta-commentary, or <|channel>thought blocks."
     )
     
     plot_content = ""
@@ -250,6 +281,94 @@ def generate_plot_fn(
         else:
             yield current_plot + f"\n\n[Generation Stoppped/Error]: {error_msg}"
 
+def refine_plot_fn(
+    api_base, 
+    model_name, 
+    system_prompt, 
+    current_plot, 
+    num_chapters, 
+    language,
+    temperature=1.0,
+    top_p=0.9,
+    repetition_penalty=1.1
+):
+    if not api_base:
+        api_base = "http://localhost:1234/v1"
+    if not model_name:
+        model_name = "gemma-4-31b-it"
+    
+    client = OpenAI(base_url=api_base, api_key="lm-studio")
+    
+    headers = {
+        "Korean": [
+            "1. 제목",
+            "2. 핵심 주제의식과 소설 스타일",
+            "3. 등장인물 이름, 설정",
+            "4. 세계관 설정",
+            "5. 각 장 제목과 내용, 핵심 포인트 (Ensure clear chapter markers like '제 1장', '제 2장', etc. are preserved)"
+        ],
+        "Japanese": [
+            "1. タイトル",
+            "2. 核心となるテーマと小説のスタイル",
+            "3. 登場人物の名前・設定",
+            "4. 世界観設定",
+            "5. 各章のタイトルと内容、重要ポイント (Ensure clear chapter markers like '第 1 章', '第 2 章', etc. are preserved)"
+        ],
+        "English": [
+            "1. Title",
+            "2. Core Theme and Novel Style",
+            "3. Character Names and Settings",
+            "4. World Building/Setting",
+            "5. Chapter Titles, Content, and Key Points (Ensure clear chapter markers like 'Chapter 1', 'Chapter 2', etc. are preserved)"
+        ]
+    }
+    h = headers.get(language, headers["Korean"])
+
+    prompt = (
+        f"You are a master story architect. Your task is to refine and elaborate on the following plot outline for a {num_chapters}-chapter novel in {language}.\n\n"
+        f"[Current Plot Outline]\n{current_plot}\n\n"
+        f"FORMAT & REFINEMENT INSTRUCTIONS:\n"
+        f"Please refine the plot while STRICTLY maintaining the following 5-section format in {language}:\n"
+        f"{h[0]}\n"
+        f"{h[1]}\n"
+        f"{h[2]}\n"
+        f"{h[3]}\n"
+        f"{h[4]}\n\n"
+        f"REFINEMENT GOALS:\n"
+        f"- Polish content for better emotional resonance and logical consistency.\n"
+        f"- Add vivid sensory details and deeper character motivations.\n"
+        f"- Ensure the {int(num_chapters)}-chapter pacing is dynamic and leading toward a powerful climax.\n"
+        f"Output ONLY the refined plot text, without any greetings, meta-talk, or internal reasoning tags like <|channel>thought."
+    )
+    
+    refined_content = ""
+    try:
+        stream = client.chat.completions.create(
+            model=model_name,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": prompt}
+            ],
+            stream=True,
+            timeout=60.0,
+            temperature=temperature,
+            top_p=top_p
+        )
+        
+        chunk_count = 0
+        for chunk in stream:
+            if chunk.choices and chunk.choices[0].delta.content:
+                refined_content += chunk.choices[0].delta.content
+                chunk_count += 1
+                if chunk_count % 5 == 0:
+                    yield clean_thought_tags(refined_content)
+        
+        yield clean_thought_tags(refined_content)
+    except Exception as e:
+        error_msg = str(e)
+        current_refined = clean_thought_tags(refined_content)
+        yield current_refined + f"\n\n[Refinement Stopped/Error]: {error_msg}"
+
 def get_next_filename(directory, prefix="novel_", extension=".txt"):
     if not os.path.exists(directory):
         os.makedirs(directory)
@@ -278,7 +397,7 @@ def generate_novel(
     language,
     start_chapter=1,
     existing_content="",
-    temperature=0.8,
+    temperature=1.0,
     top_p=0.95,
     repetition_penalty=1.1
 ):
@@ -417,7 +536,7 @@ def batch_process(
     target_tokens, 
     language, 
     batch_count,
-    temperature=0.8,
+    temperature=1.0,
     top_p=0.95,
     repetition_penalty=1.1
 ):
@@ -503,8 +622,7 @@ with gr.Blocks(title="AI Novel Generator") as demo:
             model_name = gr.Dropdown(
                 label="Model Name", 
                 choices=[
-                    "gemma-4-31b-it", 
-                    "gemma-4-31b-it-claude-opus-distill",
+                    "gemma-4-31b-it",                     
                     "google/gemma-4-26b-a4b", 
                     "qwen/qwen3.5-35b-a3b", 
                     "qwen3.5-27b"
@@ -542,7 +660,7 @@ with gr.Blocks(title="AI Novel Generator") as demo:
                 find_ch_btn = gr.Button("🔍 Find Next", scale=1)
             
             with gr.Accordion("⚙️ Generation Parameters", open=False):
-                temperature = gr.Slider(label="Temperature", minimum=0.0, maximum=2.0, step=0.1, value=0.8)
+                temperature = gr.Slider(label="Temperature", minimum=0.0, maximum=1.5, step=0.1, value=1.0)
                 top_p = gr.Slider(label="Top-P", minimum=0.0, maximum=1.0, step=0.05, value=0.95)
                 repetition_penalty = gr.Slider(label="Repetition Penalty", minimum=1.0, maximum=2.0, step=0.05, value=1.1)
 
@@ -558,6 +676,7 @@ with gr.Blocks(title="AI Novel Generator") as demo:
             
     with gr.Row():
         plot_btn = gr.Button("1. Generate Plot Outline", variant="secondary")
+        refine_plot_btn = gr.Button("✨ Refine Plot", variant="secondary")
         stop_plot_btn = gr.Button("Stop Plot", variant="stop")
         
     plot_output = gr.Textbox(label="2. Editable Plot Outline (Review and Modify)", lines=10, interactive=True)
@@ -594,7 +713,17 @@ with gr.Blocks(title="AI Novel Generator") as demo:
         ],
         outputs=[plot_output]
     )
-    stop_plot_btn.click(fn=None, inputs=None, outputs=None, cancels=[plot_click])
+    
+    refine_click = refine_plot_btn.click(
+        fn=refine_plot_fn,
+        inputs=[
+            api_base, model_name, system_prompt, plot_output, num_chapters, language,
+            temperature, top_p, repetition_penalty
+        ],
+        outputs=[plot_output]
+    )
+    
+    stop_plot_btn.click(fn=None, inputs=None, outputs=None, cancels=[plot_click, refine_click])
     
     # Auto-generate seed event
     auto_seed_btn.click(
