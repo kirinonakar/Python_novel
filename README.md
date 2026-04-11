@@ -13,6 +13,7 @@ A powerful, local-first AI novel generator that leverages LM Studio's OpenAI-com
 - **Sequential Output Storage**: All generated novels are automatically saved in the `output/` folder with incremental numbering (e.g., `novel_001.txt`, `novel_002.txt`), ensuring your work is never overwritten.
 - **Configurable System Prompt**: Fine-tune the AI's persona via `system_prompt.txt` or choose from curated presets (Literary, Web Novel, Fantasy, Romance, Sci-Fi).
 - **AI-powered Seed Generation**: Instantly brainstorm creative story ideas based on your chosen writing style and language.
+- **AI-powered Plot Refinement**: Elaborate and polish your plot outline with deeper character motivations and vivid sensory details.
 - **Flexible Model Selection**: Choose from preset optimized models or enter a custom model identifier.
 - **Batch Queue Management**: Add multiple batch jobs to a queue. The system automatically processes them sequentially, displaying a real-time counter of pending tasks.
 
@@ -60,8 +61,9 @@ You can generate your novel using two distinct workflows:
 This mode allows you to refine the story's direction before final generation.
 1.  **Input Initial Idea**: Enter a brief concept in the "Initial Idea / Seed" box, or click **🎲 Auto-Generate Seed** to let the AI brainstorm a unique starting point for you.
 2.  **Generate Plot**: Click **1. Generate Plot Outline**. The AI will create a chapter-by-chapter summary.
-3.  **Review & Edit**: **(Crucial Step)** You can manually edit the generated plot in the "2. Editable Plot Outline" box to fix inconsistencies or add specific plot points.
-4.  **Start Generation**: Click **3. Start Novel Generation**. The AI will follow your refined plot exactly, chapter by chapter.
+3.  **Refine Plot (Optional)**: Click **✨ Refine Plot**. The AI will act as a story architect to elaborate on the outline, adding emotional depth, sensory details, and better pacing.
+4.  **Review & Edit**: **(Crucial Step)** You can manually edit the generated plot in the "2. Editable Plot Outline" box to fix inconsistencies or add specific plot points.
+5.  **Start Generation**: Click **3. Start Novel Generation**. The AI will follow your refined plot exactly, chapter by chapter.
 
 ### Workflow B: Automated Batch Mode
 Perfect for creating multiple variations or generating large volumes of content automatically.
@@ -86,6 +88,13 @@ The application automatically loads the initial system prompt from `system_promp
 If you're facing writer's block, the **Auto-Generate Seed** feature uses your current system prompt settings to brainstorm a creative concept. 
 - It ensures the generated idea matches the specific tone and genre defined in your persona.
 - The output is automatically placed into the "Initial Idea / Seed" box, ready for plot generation.
+
+### Plot Refinement (✨)
+The **Refine Plot** feature acts as a "second pass" by a master story architect to improve your outline.
+- **Elaboration**: It adds vivid sensory details and deeper character motivations to the existing summary.
+- **Consistency**: It polishes the narrative for better emotional resonance and logical consistency.
+- **Pacing**: It ensures the story pacing is dynamic and leading toward a powerful climax.
+- **Structure**: It maintains the strict 5-section format (Title, Theme, Characters, World, Chapters) while enriching the content.
 
 ### Generation Parameters
 Adjust these in the "⚙️ Generation Parameters" accordion:
