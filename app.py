@@ -4,6 +4,7 @@ import os
 import re
 import time
 import threading
+import json
 
 # Global state for batch queue
 BATCH_QUEUE = []
@@ -73,6 +74,50 @@ def summarize_chapter(client, model, chapter_text, language, temperature=0.5):
     except Exception:
         return ""
 
+def merge_summaries(client, model, grand_summary, recent_summary, language, temperature=0.5):
+    """
+    Merge an old individual chapter summary into the existing Grand Summary.
+    """
+    if not grand_summary:
+        return recent_summary
+        
+    prompt = (
+        f"Update the following 'Grand Summary' of a novel by incorporating the 'New Chapter Summary' below.\n"
+        f"The resulting summary should be concise (around 5-8 sentences), chronological, and cover all major plot points so far.\n"
+        f"Write in {language}.\n\n"
+        f"Current Grand Summary:\n{grand_summary}\n\n"
+        f"New Chapter Summary to Incorporate:\n{recent_summary}"
+    )
+    try:
+        response = client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=temperature,
+            max_tokens=2000
+        )
+        return response.choices[0].message.content.strip()
+    except Exception:
+        return grand_summary + "\n" + recent_summary
+
+def save_metadata(txt_file_path, data):
+    try:
+        json_path = txt_file_path.rsplit('.', 1)[0] + ".json"
+        with open(json_path, 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False, indent=4)
+        return True
+    except Exception:
+        return False
+
+def load_metadata(txt_file_path):
+    try:
+        json_path = txt_file_path.rsplit('.', 1)[0] + ".json"
+        if os.path.exists(json_path):
+            with open(json_path, 'r', encoding='utf-8') as f:
+                return json.load(f)
+    except Exception:
+        pass
+    return None
+
 def split_plot_into_chapters(plot_seed, num_chapters):
     import re
     # Look for common chapter markers: Chapter 1, 1장, 제 1장, Chapter 01, etc.
@@ -103,14 +148,15 @@ def split_full_text_into_chapters(text, language):
     # Remove error messages
     text = re.sub(r'\n\n\[Generation Stopped/Error\].*$', '', text, flags=re.DOTALL)
     
+    # 띄어쓰기와 # 기호 누락에 유연하게 대응하도록 수정
     if language == "Korean":
-        pattern = r'(?:^|\n)# 제 (\d+)장'
+        pattern = r'(?:^|\n)#?\s*제?\s*(\d+)\s*장'
     elif language == "Japanese":
-        pattern = r'(?:^|\n)# 第 (\d+) 章'
+        pattern = r'(?:^|\n)#?\s*第?\s*(\d+)\s*章'
     else:
-        pattern = r'(?:^|\n)# Chapter (\d+)'
+        pattern = r'(?:^|\n)#?\s*Chapter\s*(\d+)'
         
-    matches = list(re.finditer(pattern, text))
+    matches = list(re.finditer(pattern, text, re.IGNORECASE)) # 대소문자 무시(IGNORECASE) 추가
     chapters = {}
     for i in range(len(matches)):
         try:
@@ -410,63 +456,117 @@ def generate_novel(
     
     full_text = ""
     chapter_summaries = []
+    grand_summary = ""
     
-    # Resuming logic
+    output_dir = "output"
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+    
+    # Check for metadata if resuming
     start_chapter = int(start_chapter)
-    if start_chapter > 1 and existing_content:
-        yield "🔄 Resuming generation... Reconstructing context from existing chapters. Please wait.", None
-        chapters_map = split_full_text_into_chapters(existing_content, language)
-        
-        rebuilt_text = ""
-        for ch in range(1, start_chapter):
-            if language == "Korean": header = f"\n\n# 제 {ch}장\n\n"
-            elif language == "Japanese": header = f"\n\n# 第 {ch} 章\n\n"
-            else: header = f"\n\n# Chapter {ch}\n\n"
+    metadata = None
+    
+    # We try to find if there's a matching metadata file in the output folder
+    # matching the current content if start_chapter > 1
+    if start_chapter > 1:
+        yield "🔄 Resuming generation... Checking for saved state.", None
+        # Heuristic: find the most recent novel file and check its metadata
+        files = [f for f in os.listdir(output_dir) if f.startswith("novel_") and f.endswith(".json")]
+        if files:
+            latest_json = sorted(files)[-1]
+            metadata = load_metadata(os.path.join(output_dir, latest_json))
             
-            content = chapters_map.get(ch, "")
-            if content:
-                rebuilt_text += header + content
-                summary = summarize_chapter(client, model_name, content, language)
-                chapter_summaries.append(summary)
+            if metadata and metadata.get("current_chapter", 0) + 1 == start_chapter:
+                yield "✅ Metadata found. Loading summaries and plot...", None
+                chapter_summaries = metadata.get("chapter_summaries", [])
+                grand_summary = metadata.get("grand_summary", "")
+                full_text = existing_content
             else:
-                # If a chapter is missing, we still need to keep the order for summaries
-                chapter_summaries.append("")
-        full_text = rebuilt_text
-        yield full_text + "\n\n✅ Context reconstructed. Starting generation...", None
+                metadata = None # Reset if it doesn't match the resume point
+        
+        if not metadata and existing_content:
+            yield "⚠️ Metadata not found or mismatch. Reconstructing context from text (this may take time)...", None
+            chapters_map = split_full_text_into_chapters(existing_content, language)
+            
+            rebuilt_text = ""
+            for ch in range(1, start_chapter):
+                if language == "Korean": header = f"\n\n# 제 {ch}장\n\n"
+                elif language == "Japanese": header = f"\n\n# 第 {ch} 章\n\n"
+                else: header = f"\n\n# Chapter {ch}\n\n"
+                
+                content = chapters_map.get(ch, "")
+                if content:
+                    rebuilt_text += header + content
+                    summary = summarize_chapter(client, model_name, content, language)
+                    chapter_summaries.append(summary)
+                else:
+                    chapter_summaries.append("")
+            
+            # Apply sliding window logic to reconstructed summaries if they are too many
+            if len(chapter_summaries) > 5:
+                yield "📦 Compressing older summaries into a Grand Summary...", None
+                to_merge = chapter_summaries[:-5]
+                chapter_summaries = chapter_summaries[-5:]
+                for s in to_merge:
+                    if s:
+                        grand_summary = merge_summaries(client, model_name, grand_summary, s, language)
+            
+            full_text = rebuilt_text
+            yield full_text + "\n\n✅ Context reconstructed. Starting generation...", None
+
+    # Determine filename for this session
+    file_path = get_next_filename(output_dir)
     
     # Pre-parse chapters from plot if possible
     chapter_plots = split_plot_into_chapters(plot_seed, int(num_chapters))
     
     for ch in range(start_chapter, int(num_chapters) + 1):
-        # Build improved prompt for the current chapter
+        # --- PROMPT RESTRUCTURING FOR KV CACHE OPTIMIZATION ---
+        # 1. STATIC PARTS (Top)
         prompt = f"You are a professional novelist writing a novel in {language}.\n\n"
         prompt += f"[Book Information]\n"
         prompt += f"- Total Chapters: {int(num_chapters)}\n"
-        prompt += f"- Current Chapter to Write: Chapter {ch}\n"
+        prompt += f"- Master Plot Outline:\n{plot_seed}\n\n" # Plot outline is relatively static
         
-        # Specific plot for this chapter
-        if chapter_plots and ch in chapter_plots:
-            prompt += f"- Current Chapter Plot: {chapter_plots[ch]}\n\n"
-        else:
-            prompt += f"- Master Plot Outline:\n{plot_seed}\n\n"
-        
-        # Context Management
-        if chapter_summaries:
-            prompt += "[Story So Far (Summary)]\n"
-            for i, summ in enumerate(chapter_summaries):
-                prompt += f"Chapter {i+1}: {summ}\n"
-            prompt += "\n"
-            
-            # Direct previous context (last 1000 chars)
-            last_content = full_text.split("\n\n#")[-1] # Rudimentary way to get last chapter text
-            prompt += f"[Directly Preceding Content (End of Chapter {ch-1})]\n"
-            prompt += f"\"{last_content[-1000:]}\"\n\n"
-            
+        # 2. SEMI-STATIC / GLOBAL INSTRUCTIONS
         prompt += f"CRITICAL INSTRUCTION:\n"
         prompt += f"1. Write ONLY Chapter {ch}. Do not rush into future chapters.\n"
         prompt += f"2. Target length: ~{int(target_tokens)} tokens.\n"
         prompt += f"3. Output ONLY the story text. No meta-talk or phrases like 'Sure, here is chapter...'.\n"
-        prompt += f"4. NEVER use internal reasoning tags, thinking blocks, or <|channel>thought tokens."
+        prompt += f"4. NEVER use internal reasoning tags, thinking blocks, or <|channel>thought tokens.\n\n"
+
+        # 3. DYNAMIC PARTS (Bottom) - These change every chapter
+        prompt += f"### CURRENT FOCUS: Chapter {ch} ###\n"
+        if chapter_plots and ch in chapter_plots:
+            prompt += f"- Current Chapter Plot: {chapter_plots[ch]}\n\n"
+        
+        # Context Management (Hierarchical)
+        if grand_summary:
+            prompt += f"[Grand Summary (Chapters 1 to {ch - len(chapter_summaries) - 1})]\n{grand_summary}\n\n"
+        
+        if chapter_summaries:
+            prompt += "[Recent Chapter Summaries]\n"
+            start_idx = ch - len(chapter_summaries)
+            for i, summ in enumerate(chapter_summaries):
+                if summ:
+                    prompt += f"Chapter {start_idx + i}: {summ}\n"
+            prompt += "\n"
+            
+            # Direct previous context (last 1000 chars)
+            # Find the start of the last chapter in full_text
+            headers = [f"\n\n# 제 {ch-1}장", f"\n\n# 第 {ch-1} 章", f"\n\n# Chapter {ch-1}"]
+            last_content = ""
+            for h in headers:
+                if h in full_text:
+                    last_content = full_text.split(h)[-1]
+                    break
+            if not last_content:
+                last_content = full_text # Fallback
+                
+            prompt += f"[Directly Preceding Content (End of Chapter {ch-1})]\n"
+            prompt += f"\"{last_content[-1200:]}\"\n\n"
+        
+        prompt += "Please begin writing the chapter now."
 
         try:
             chapter_text = ""
@@ -498,33 +598,56 @@ def generate_novel(
                     content = chunk.choices[0].delta.content
                     chapter_text += content
                     chunk_count += 1
-                    # Yield more frequently at the start, then throttle to reduce lag
                     if chunk_count < 10 or chunk_count % 10 == 0:
                         yield full_text + clean_thought_tags(chapter_text), None
             
-            full_text += clean_thought_tags(chapter_text)
-            yield full_text, None # Ensure end of chapter is shown
+            chapter_text = clean_thought_tags(chapter_text)
+            full_text += chapter_text
+            yield full_text, None 
             
-            # Summarize this chapter for future context
+            # --- POST-CHAPTER STATE MANAGEMENT ---
+            # Summarize this chapter
             summary = summarize_chapter(client, model_name, chapter_text, language)
             chapter_summaries.append(summary)
+            
+            # Hierarchical Summarization: Sliding Window
+            if len(chapter_summaries) > 5:
+                # Merge the oldest summary into grand_summary
+                oldest_summary = chapter_summaries.pop(0)
+                if oldest_summary:
+                    grand_summary = merge_summaries(client, model_name, grand_summary, oldest_summary, language)
+            
+            # Save progress metadata
+            meta_data = {
+                "title": "Novel", # Could be extracted from plot if desired
+                "language": language,
+                "num_chapters": num_chapters,
+                "current_chapter": ch,
+                "plot_seed": plot_seed,
+                "grand_summary": grand_summary,
+                "chapter_summaries": chapter_summaries
+            }
+            save_metadata(file_path, meta_data)
+            
+            # Periodically save text to file as well
+            with open(file_path, "w", encoding="utf-8") as f:
+                f.write(full_text)
             
         except Exception as e:
             error_msg = str(e)
             current_text = full_text + clean_thought_tags(chapter_text)
-            hint = ""
-            if "Failed to parse input at pos 0" in error_msg:
-                hint = "\n\n💡 [Tip] Gemma 4 parsing error (pos 0). This usually requires adjusting the Chat Template in LM Studio to support reasoning tokens or disabling prompt caching."
-            
-            yield current_text + f"\n\n[Generation Stopped/Error]: {error_msg}{hint}", None
+            yield current_text + f"\n\n[Generation Stopped/Error]: {error_msg}", None
             break
 
-    # Save to file in output directory with sequential numbering
-    output_dir = "output"
-    file_path = get_next_filename(output_dir)
-    with open(file_path, "w", encoding="utf-8") as f:
-        f.write(full_text)
-    
+    # If generation successfully reached the final chapter, delete metadata
+    if 'ch' in locals() and ch == int(num_chapters):
+        json_path = file_path.rsplit('.', 1)[0] + ".json"
+        if os.path.exists(json_path):
+            try:
+                os.remove(json_path)
+            except Exception:
+                pass
+
     yield full_text, file_path
 
 def batch_process(
