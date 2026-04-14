@@ -22,8 +22,8 @@ A powerful, local-first AI novel generator that leverages LM Studio's OpenAI-com
 - **Python 3.10+**
 - **LM Studio**: Running a local server (default port `1234`).
 - **Supported Models**: 
-  - `gemma-4-31b-it` (Default)
-  - `google/gemma-4-26b-a4b`
+  - `unsloth/gemma-4-31b-it` (Default)
+  - `unsloth/gemma-4-26b-a4b-it`
   - `qwen/qwen3.5-35b-a3b`
   - `qwen3.5-27b`
   - (Any other custom model identifier)
