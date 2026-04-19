@@ -1,32 +1,33 @@
-# AI Novel Generator (Gradio + LM Studio)
+# AI Novel Generator
 
-A powerful, local-first AI novel generator that leverages LM Studio's OpenAI-compatible API to create immersive stories chapter-by-chapter.
+A powerful AI novel generator that leverages LM Studio and Google Gemini API to create immersive stories chapter-by-chapter.
 ![UI Screenshot](screenshot.png)
 
 ## Features
 
+- **Dual Provider Support**: Seamlessly switch between local models via **LM Studio** and cloud models via **Google API** (Gemini & Gemma).
+- **Automated API Key Loading**: Automatically loads your Google API key from `gemini.txt` for a zero-config experience.
 - **Sequential Generation**: Maintains narrative continuity by including previous chapter context in each new generation.
 - **Customizable Structure**: Set your preferred plot seed, number of chapters, and target token length.
 - **Multi-language Support**: Select between **Korean**, **Japanese** and **English** for your story.
 - **Real-time Streaming**: Watch the AI write your novel in real-time within the Gradio interface.
 - **Direct Export**: Automatically bundles all generated chapters into a single `.txt` file for easy download.
 - **Sequential Output Storage**: All generated novels are automatically saved in the `output/` folder with incremental numbering (e.g., `novel_001.txt`, `novel_002.txt`), ensuring your work is never overwritten.
+- **Plot Management**: Save your refined plot outlines to `output/plot/` and easily reload them later to resume or restart story generation.
 - **Configurable System Prompt**: Fine-tune the AI's persona via `system_prompt.txt` or choose from curated presets (Literary, Web Novel, Fantasy, Romance, Sci-Fi).
 - **AI-powered Seed Generation**: Instantly brainstorm creative story ideas based on your chosen writing style and language.
 - **AI-powered Plot Refinement**: Elaborate and polish your plot outline with deeper character motivations and vivid sensory details.
-- **Flexible Model Selection**: Choose from preset optimized models or enter a custom model identifier.
 - **Batch Queue Management**: Add multiple batch jobs to a queue. The system automatically processes them sequentially, displaying a real-time counter of pending tasks.
 
 ## Prerequisites
 
 - **Python 3.10+**
-- **LM Studio**: Running a local server (default port `1234`).
+- **Providers**:
+  - **LM Studio**: Local server running on port `1234`.
+  - **Google API**: A valid Gemini API key (can be stored in `gemini.txt`).
 - **Supported Models**: 
-  - `unsloth/gemma-4-31b-it` (Default)
-  - `unsloth/gemma-4-26b-a4b-it`
-  - `qwen/qwen3.5-35b-a3b`
-  - `qwen3.5-27b`
-  - (Any other custom model identifier)
+  - **Google (Cloud)**: `gemini-3.1`, `gemini-3`, `gemini-2.5`, `gemma-4` variants.
+  - **LM Studio (Local)**: `unsloth/gemma-4`, `qwen/qwen3.5` variants, or any local model identifier.
 
 ## Installation
 
@@ -63,7 +64,8 @@ This mode allows you to refine the story's direction before final generation.
 2.  **Generate Plot**: Click **1. Generate Plot Outline**. The AI will create a chapter-by-chapter summary.
 3.  **Refine Plot (Optional)**: Click **✨ Refine Plot**. The AI will act as a story architect to elaborate on the outline, adding emotional depth, sensory details, and better pacing.
 4.  **Review & Edit**: **(Crucial Step)** You can manually edit the generated plot in the "2. Editable Plot Outline" box to fix inconsistencies or add specific plot points.
-5.  **Start Generation**: Click **3. Start Novel Generation**. The AI will follow your refined plot exactly, chapter by chapter.
+5.  **Save/Load Plot**: Use the **💾 Save Plot** button to store your outline. You can reload previously saved plots from the **📂 Saved Plot List** at any time.
+6.  **Start Generation**: Click **3. Start Novel Generation**. The AI will follow your refined plot exactly, chapter by chapter.
 
 ### Workflow B: Automated Batch Mode
 Perfect for creating multiple variations or generating large volumes of content automatically.
@@ -104,16 +106,19 @@ Adjust these in the "⚙️ Generation Parameters" accordion:
 
 ## Usage
 
-1. **Start LM Studio**:
-   - Load your preferred model.
-   - Start the "Local Server" on port `1234`.
+1. **Prepare Connection**:
+   - **For LM Studio**: Load your model and start the "Local Server" on port `1234`.
+   - **For Google API**: Ensure your API key is in `gemini.txt` or ready to enter in the UI.
 2. **Launch the Generator**:
    ```bash
    python app.py
    ```
 3. **Open the Web UI**:
    - Navigate to [http://127.0.0.1:7860](http://127.0.0.1:7860) in your browser.
-4. **Begin Writing**:
+4. **Configure API**:
+   - Select your **Provider** (LM Studio or Google) in the **API SETTINGS** panel.
+   - The Endpoint and Model list will update automatically.
+5. **Begin Writing**:
    - Input your plot seed, select the language, and click **Generate Novel**.
 
 ## UI Preview

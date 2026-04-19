@@ -10,6 +10,23 @@ import json
 TASK_QUEUE = []
 QUEUE_LOCK = threading.Lock()
 
+LM_STUDIO_MODELS = [
+    "unsloth/gemma-4-31b-it",                     
+    "unsloth/gemma-4-26b-a4b-it", 
+    "qwen/qwen3.5-35b-a3b", 
+    "qwen3.5-27b"
+]
+
+GOOGLE_MODELS = [
+    "gemini-3.1-flash-lite-preview", 
+    "gemini-3-flash-preview", 
+    "gemini-3.1-pro-preview",
+    "gemini-2.5-flash",
+    "gemini-2.5-flash-lite",
+    "gemma-4-26b-a4b-it",
+    "gemma-4-31b-it"
+]
+
 
 def clean_thought_tags(text):
     """
@@ -31,6 +48,15 @@ def load_system_prompt(filename="system_prompt.txt"):
         except Exception:
             pass
     return "You are a professional novelist. Write engaging and immersive stories."
+
+def load_gemini_key(filename="gemini.txt"):
+    if os.path.exists(filename):
+        try:
+            with open(filename, "r", encoding="utf-8") as f:
+                return f.read().strip()
+        except Exception:
+            pass
+    return ""
 
 def open_output_folder():
     output_dir = "output"
@@ -264,16 +290,30 @@ def apply_preset(preset_name):
         return SYSTEM_PROMPT_PRESETS[preset_name]
     return ""
 
-def generate_random_seed_fn(api_base, model_name, system_prompt, language, temperature=1.0, top_p=0.95):
+def update_api_settings(provider):
+    if provider == "Google":
+        return "https://generativelanguage.googleapis.com/v1beta/openai/", gr.update(choices=GOOGLE_MODELS, value=GOOGLE_MODELS[0])
+    else:
+        return "http://localhost:1234/v1", gr.update(choices=LM_STUDIO_MODELS, value=LM_STUDIO_MODELS[0])
+
+def generate_random_seed_fn(api_base, model_name, google_api_key, system_prompt, language, temperature=1.0, top_p=0.95):
     # 1. 클릭 즉시 UI에 피드백을 줍니다.
     yield "⏳ 시드를 구상하고 있습니다. 잠시만 기다려주세요..."
     
     if not api_base:
         api_base = "http://localhost:1234/v1"
+    
+    # Google API logic
+    api_key = "lm-studio"
+    if model_name.startswith("gemini") or model_name.startswith("gemma-4"):
+        if api_base == "http://localhost:1234/v1":
+            api_base = "https://generativelanguage.googleapis.com/v1beta/openai/"
+        api_key = google_api_key if google_api_key else "lm-studio"
+
     if not model_name:
-        model_name = "unsloth/gemma-4-31b-it"
+        model_name = "gemini-3.1-flash-lite-preview"
         
-    client = OpenAI(base_url=api_base, api_key="lm-studio")
+    client = OpenAI(base_url=api_base, api_key=api_key)
     
     prompt = (
         f"Based on your assigned writing style, genre, and persona in the system prompt, "
@@ -309,6 +349,7 @@ def generate_random_seed_fn(api_base, model_name, system_prompt, language, tempe
 def generate_plot_fn(
     api_base, 
     model_name, 
+    google_api_key,
     system_prompt, 
     plot_seed, 
     num_chapters, 
@@ -319,10 +360,17 @@ def generate_plot_fn(
 ):
     if not api_base:
         api_base = "http://localhost:1234/v1"
-    if not model_name:
-        model_name = "unsloth/gemma-4-31b-it"
     
-    client = OpenAI(base_url=api_base, api_key="lm-studio")
+    api_key = "lm-studio"
+    if model_name.startswith("gemini") or model_name.startswith("gemma-4"):
+        if api_base == "http://localhost:1234/v1":
+            api_base = "https://generativelanguage.googleapis.com/v1beta/openai/"
+        api_key = google_api_key if google_api_key else "lm-studio"
+
+    if not model_name:
+        model_name = "gemini-3.1-flash-lite-preview"
+    
+    client = OpenAI(base_url=api_base, api_key=api_key)
     
     headers = {
         "Korean": [
@@ -397,6 +445,7 @@ def generate_plot_fn(
 def refine_plot_fn(
     api_base, 
     model_name, 
+    google_api_key,
     system_prompt, 
     current_plot, 
     num_chapters, 
@@ -407,10 +456,17 @@ def refine_plot_fn(
 ):
     if not api_base:
         api_base = "http://localhost:1234/v1"
-    if not model_name:
-        model_name = "unsloth/gemma-4-31b-it"
     
-    client = OpenAI(base_url=api_base, api_key="lm-studio")
+    api_key = "lm-studio"
+    if model_name.startswith("gemini") or model_name.startswith("gemma-4"):
+        if api_base == "http://localhost:1234/v1":
+            api_base = "https://generativelanguage.googleapis.com/v1beta/openai/"
+        api_key = google_api_key if google_api_key else "lm-studio"
+
+    if not model_name:
+        model_name = "gemini-3.1-flash-lite-preview"
+    
+    client = OpenAI(base_url=api_base, api_key=api_key)
     
     headers = {
         "Korean": [
@@ -503,6 +559,7 @@ def get_next_filename(directory, prefix="novel_", extension=".txt"):
 def generate_novel(
     api_base, 
     model_name, 
+    google_api_key,
     system_prompt, 
     plot_seed, 
     num_chapters, 
@@ -516,10 +573,17 @@ def generate_novel(
 ):
     if not api_base:
         api_base = "http://localhost:1234/v1"
-    if not model_name:
-        model_name = "unsloth/gemma-4-31b-it"
     
-    client = OpenAI(base_url=api_base, api_key="lm-studio")
+    api_key = "lm-studio"
+    if model_name.startswith("gemini") or model_name.startswith("gemma-4"):
+        if api_base == "http://localhost:1234/v1":
+            api_base = "https://generativelanguage.googleapis.com/v1beta/openai/"
+        api_key = google_api_key if google_api_key else "lm-studio"
+
+    if not model_name:
+        model_name = "gemini-3.1-flash-lite-preview"
+    
+    client = OpenAI(base_url=api_base, api_key=api_key)
     
     full_text = ""
     chapter_summaries = []
@@ -720,6 +784,7 @@ def generate_novel(
 def batch_process(
     api_base, 
     model_name, 
+    google_api_key,
     system_prompt, 
     plot_seed, 
     num_chapters, 
@@ -735,7 +800,7 @@ def batch_process(
         # 1. Generate Plot
         plot_content = ""
         plot_gen = generate_plot_fn(
-            api_base, model_name, system_prompt, plot_seed, num_chapters, language,
+            api_base, model_name, google_api_key, system_prompt, plot_seed, num_chapters, language,
             temperature=temperature, top_p=top_p, repetition_penalty=repetition_penalty
         )
         for p in plot_gen:
@@ -753,7 +818,7 @@ def batch_process(
                 break
                 
             novel_gen = generate_novel(
-                api_base, model_name, system_prompt, plot_content, num_chapters, target_tokens, language,
+                api_base, model_name, google_api_key, system_prompt, plot_content, num_chapters, target_tokens, language,
                 start_chapter=next_ch,
                 existing_content=current_novel_text,
                 temperature=temperature, top_p=top_p, repetition_penalty=repetition_penalty
@@ -812,22 +877,22 @@ def run_worker():
 
 # Gradio Interface
 with gr.Blocks(title="AI Novel Generator") as demo:
-    gr.Markdown("# 🖋️ AI Novel Generator (LM Studio)")
+    gr.Markdown("# 🖋️ AI Novel Generator")
     
     with gr.Row():
         with gr.Column(scale=1):
-            api_base = gr.Textbox(label="LM Studio API Base", value="http://localhost:1234/v1")
-            model_name = gr.Dropdown(
-                label="Model Name", 
-                choices=[
-                    "unsloth/gemma-4-31b-it",                     
-                    "unsloth/gemma-4-26b-a4b-it", 
-                    "qwen/qwen3.5-35b-a3b", 
-                    "qwen3.5-27b"
-                ],
-                value="unsloth/gemma-4-31b-it",
-                allow_custom_value=True
-            )
+            with gr.Group():
+                gr.Markdown("### 🛠️ API SETTINGS")
+                provider = gr.Radio(["LM Studio", "Google"], label="Provider", value="LM Studio")
+                api_base = gr.Textbox(label="Endpoint", value="http://localhost:1234/v1")
+                google_api_key = gr.Textbox(label="Google API Key", value=load_gemini_key(), type="password")
+                model_name = gr.Dropdown(
+                    label="Model Name", 
+                    choices=LM_STUDIO_MODELS,
+                    value="unsloth/gemma-4-31b-it",
+                    allow_custom_value=True
+                )
+            
             with gr.Row():
                 system_prompt_preset = gr.Dropdown(
                     choices=["Custom (File Default)"] + list(SYSTEM_PROMPT_PRESETS.keys()), 
@@ -902,6 +967,13 @@ with gr.Blocks(title="AI Novel Generator") as demo:
         outputs=[system_prompt]
     )
 
+    # Provider change event
+    provider.change(
+        fn=update_api_settings,
+        inputs=[provider],
+        outputs=[api_base, model_name]
+    )
+
     # Save prompt event
     save_prompt_btn.click(
         fn=save_system_prompt,
@@ -913,7 +985,7 @@ with gr.Blocks(title="AI Novel Generator") as demo:
     plot_click = plot_btn.click(
         fn=generate_plot_fn,
         inputs=[
-            api_base, model_name, system_prompt, plot_seed, num_chapters, language,
+            api_base, model_name, google_api_key, system_prompt, plot_seed, num_chapters, language,
             temperature, top_p, repetition_penalty
         ],
         outputs=[plot_output]
@@ -922,7 +994,7 @@ with gr.Blocks(title="AI Novel Generator") as demo:
     refine_click = refine_plot_btn.click(
         fn=refine_plot_fn,
         inputs=[
-            api_base, model_name, system_prompt, plot_output, num_chapters, language,
+            api_base, model_name, google_api_key, system_prompt, plot_output, num_chapters, language,
             temperature, top_p, repetition_penalty
         ],
         outputs=[plot_output]
@@ -955,7 +1027,7 @@ with gr.Blocks(title="AI Novel Generator") as demo:
     auto_seed_btn.click(
         fn=generate_random_seed_fn,
         inputs=[
-            api_base, model_name, system_prompt, language, 
+            api_base, model_name, google_api_key, system_prompt, language, 
             temperature, top_p
         ],
         outputs=[plot_seed]
@@ -966,7 +1038,7 @@ with gr.Blocks(title="AI Novel Generator") as demo:
         fn=enqueue_task,
         inputs=[
             gr.State("single"),
-            api_base, model_name, system_prompt, plot_output, num_chapters, target_tokens, language,
+            api_base, model_name, google_api_key, system_prompt, plot_output, num_chapters, target_tokens, language,
             start_chapter, output_text,
             temperature, top_p, repetition_penalty
         ],
@@ -990,7 +1062,7 @@ with gr.Blocks(title="AI Novel Generator") as demo:
         fn=enqueue_task,
         inputs=[
             gr.State("batch"),
-            api_base, model_name, system_prompt, plot_seed, num_chapters, target_tokens, language, batch_count,
+            api_base, model_name, google_api_key, system_prompt, plot_seed, num_chapters, target_tokens, language, batch_count,
             temperature, top_p, repetition_penalty
         ],
         outputs=[queue_count_display],
