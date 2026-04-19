@@ -419,6 +419,7 @@ def generate_plot_fn(
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": prompt}
             ],
+            max_tokens=8192,
             stream=True,
             timeout=60.0,
             temperature=temperature,
@@ -518,6 +519,7 @@ def refine_plot_fn(
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": prompt}
             ],
+            max_tokens=8192,
             stream=True,
             timeout=60.0,
             temperature=temperature,
