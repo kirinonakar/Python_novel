@@ -290,11 +290,26 @@ def apply_preset(preset_name):
         return SYSTEM_PROMPT_PRESETS[preset_name]
     return ""
 
-def update_api_settings(provider):
+def fetch_models(api_base):
+    try:
+        # Use a short timeout to avoid hanging the UI
+        client = OpenAI(base_url=api_base, api_key="lm-studio")
+        models = client.models.list()
+        model_ids = [m.id for m in models.data]
+        if not model_ids:
+            return LM_STUDIO_MODELS
+        return sorted(model_ids)
+    except Exception:
+        return LM_STUDIO_MODELS
+
+def update_api_settings(provider, current_base):
     if provider == "Google":
         return "https://generativelanguage.googleapis.com/v1beta/openai/", gr.update(choices=GOOGLE_MODELS, value=GOOGLE_MODELS[0])
     else:
-        return "http://localhost:1234/v1", gr.update(choices=LM_STUDIO_MODELS, value=LM_STUDIO_MODELS[0])
+        # If switching back to LM Studio, use the current base or default
+        base = current_base if current_base and "localhost" in current_base else "http://localhost:1234/v1"
+        models = fetch_models(base)
+        return base, gr.update(choices=models, value=models[0] if models else "")
 
 def generate_random_seed_fn(api_base, model_name, google_api_key, system_prompt, language, temperature=1.0, top_p=0.95):
     # 1. 클릭 즉시 UI에 피드백을 줍니다.
@@ -888,12 +903,15 @@ with gr.Blocks(title="AI Novel Generator") as demo:
                 provider = gr.Radio(["LM Studio", "Google"], label="Provider", value="LM Studio")
                 api_base = gr.Textbox(label="Endpoint", value="http://localhost:1234/v1")
                 google_api_key = gr.Textbox(label="Google API Key", value=load_gemini_key(), type="password")
-                model_name = gr.Dropdown(
-                    label="Model Name", 
-                    choices=LM_STUDIO_MODELS,
-                    value="unsloth/gemma-4-31b-it",
-                    allow_custom_value=True
-                )
+                with gr.Row():
+                    model_name = gr.Dropdown(
+                        label="Model Name", 
+                        choices=LM_STUDIO_MODELS,
+                        value="unsloth/gemma-4-31b-it",
+                        allow_custom_value=True,
+                        scale=10
+                    )
+                    refresh_models_btn = gr.Button("🔄", scale=1)
             
             with gr.Row():
                 system_prompt_preset = gr.Dropdown(
@@ -972,8 +990,25 @@ with gr.Blocks(title="AI Novel Generator") as demo:
     # Provider change event
     provider.change(
         fn=update_api_settings,
-        inputs=[provider],
+        inputs=[provider, api_base],
         outputs=[api_base, model_name]
+    )
+
+    # Refresh models event
+    def refresh_models_fn(base):
+        models = fetch_models(base)
+        return gr.update(choices=models, value=models[0] if models else "")
+
+    refresh_models_btn.click(
+        fn=refresh_models_fn,
+        inputs=[api_base],
+        outputs=[model_name]
+    )
+
+    api_base.submit(
+        fn=refresh_models_fn,
+        inputs=[api_base],
+        outputs=[model_name]
     )
 
     # Save prompt event
