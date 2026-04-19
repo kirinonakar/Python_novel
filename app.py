@@ -6,8 +6,8 @@ import time
 import threading
 import json
 
-# Global state for batch queue
-BATCH_QUEUE = []
+# Global state for task queue
+TASK_QUEUE = []
 QUEUE_LOCK = threading.Lock()
 
 
@@ -56,6 +56,73 @@ def save_system_prompt(content, filename="system_prompt.txt"):
         return "✅ System prompt saved successfully!"
     except Exception as e:
         return f"❌ Failed to save: {str(e)}"
+
+def save_plot_fn(plot_text, language):
+    if not plot_text or plot_text.strip() == "":
+        return "❌ Plot content is empty."
+    
+    # Extract title
+    title = "untitled_plot"
+    patterns = {
+        "Korean": r"(?:^|\n)#?\s*1\.\s*제목\s*[:\s]*(.*)",
+        "Japanese": r"(?:^|\n)#?\s*1\.\s*タイトル\s*[:\s]*(.*)",
+        "English": r"(?:^|\n)#?\s*1\.\s*Title\s*[:\s]*(.*)"
+    }
+    pattern = patterns.get(language, patterns["Korean"])
+    match = re.search(pattern, plot_text)
+    if match:
+        title = match.group(1).strip()
+    
+    # Clean title for filename
+    clean_title = re.sub(r'[\\/*?:"<>|]', "", title)
+    clean_title = clean_title.strip().replace(" ", "_")
+    if not clean_title:
+        clean_title = "untitled_plot"
+        
+    plot_dir = os.path.join("output", "plot")
+    if not os.path.exists(plot_dir):
+        os.makedirs(plot_dir)
+    
+    file_path = os.path.join(plot_dir, f"{clean_title}.txt")
+    
+    try:
+        with open(file_path, "w", encoding="utf-8") as f:
+            f.write(plot_text)
+        return f"✅ Plot saved: {os.path.basename(file_path)}", gr.update(choices=get_plot_list())
+    except Exception as e:
+        return f"❌ Failed to save plot: {str(e)}", gr.skip()
+
+def get_plot_list():
+    plot_dir = os.path.join("output", "plot")
+    if not os.path.exists(plot_dir):
+        return []
+    try:
+        files = [f for f in os.listdir(plot_dir) if f.endswith(".txt")]
+        return sorted(files)
+    except Exception:
+        return []
+
+def load_plot_fn(filename):
+    if not filename or filename == "":
+        return gr.update(), "💡 Please select a valid plot file."
+    
+    plot_dir = os.path.abspath(os.path.join("output", "plot"))
+    file_path = os.path.join(plot_dir, filename)
+    
+    if not os.path.exists(file_path):
+        return gr.update(), f"❌ File not found: {filename}"
+        
+    try:
+        with open(file_path, "r", encoding="utf-8") as f:
+            content = f.read()
+            if not content:
+                return "", f"⚠️ Warning: File '{filename}' is empty."
+            return content, f"✅ Successfully loaded: {filename}"
+    except Exception as e:
+        return gr.update(), f"❌ Failed to read {filename}: {str(e)}"
+
+def refresh_plot_list():
+    return gr.update(choices=get_plot_list())
 
 def summarize_chapter(client, model, chapter_text, language, temperature=0.5):
     prompt = (
@@ -713,24 +780,32 @@ def batch_process(
             if new_next_ch <= target_ch:
                 time.sleep(2)
 
-def enqueue_batch(*args):
+def enqueue_task(task_type, *args):
     with QUEUE_LOCK:
-        BATCH_QUEUE.append(args)
-        return len(BATCH_QUEUE)
+        TASK_QUEUE.append((task_type, args))
+        return len(TASK_QUEUE)
 
-def run_batch_worker():
+def run_worker():
     while True:
         with QUEUE_LOCK:
-            if not BATCH_QUEUE:
+            if not TASK_QUEUE:
                 break
-            params = BATCH_QUEUE.pop(0)
+            task_type, params = TASK_QUEUE.pop(0)
         
-        # Run the existing batch_process generator with captured parameters
-        # batch_process returns (plot_output, output_text, download_link)
-        for p, t, f in batch_process(*params):
-            with QUEUE_LOCK:
-                current_count = len(BATCH_QUEUE)
-            yield p, t, f, current_count
+        if task_type == "batch":
+            # params = (api_base, model_name, system_prompt, plot_seed, num_chapters, target_tokens, language, batch_count, temperature, top_p, repetition_penalty)
+            for p, t, f in batch_process(*params):
+                with QUEUE_LOCK:
+                    current_count = len(TASK_QUEUE)
+                yield p, t, f, current_count
+        else: # single
+            # params = (api_base, model_name, system_prompt, plot_output, num_chapters, target_tokens, language, start_chapter, output_text, temperature, top_p, repetition_penalty)
+            # generate_novel yields (full_text, file_path)
+            plot_outline = params[3]
+            for t, f in generate_novel(*params):
+                with QUEUE_LOCK:
+                    current_count = len(TASK_QUEUE)
+                yield plot_outline, t, f, current_count
     
     # Final yield to ensure queue count is 0 at the very end
     yield gr.skip(), gr.skip(), gr.skip(), 0
@@ -796,13 +871,21 @@ with gr.Blocks(title="AI Novel Generator") as demo:
                 with gr.Row():
                     batch_start_btn = gr.Button("🚀 Batch Start", variant="primary")
                     batch_stop_btn = gr.Button("⏹️ Stop", variant="stop")
+                open_folder_btn = gr.Button("📂 Open Output Folder")
             
     with gr.Row():
         plot_btn = gr.Button("1. Generate Plot Outline", variant="secondary")
         refine_plot_btn = gr.Button("✨ Refine Plot", variant="secondary")
+        save_plot_btn = gr.Button("💾 Save Plot", variant="secondary")
         stop_plot_btn = gr.Button("Stop Plot", variant="stop")
         
+    with gr.Row():
+        plot_list = gr.Dropdown(label="📂 Saved Plot List", choices=get_plot_list(), interactive=True, scale=4)
+        load_plot_btn = gr.Button("📂 Load Plot", variant="primary", scale=1)
+        refresh_plot_btn = gr.Button("🔄 Refresh List", scale=1)
+
     plot_output = gr.Textbox(label="2. Editable Plot Outline (Review and Modify)", lines=10, interactive=True)
+    plot_status = gr.Textbox(label="Plot Save/Load Status", interactive=False, placeholder="Status will appear here...")
     
     with gr.Row():
         generate_btn = gr.Button("3. Start Novel Generation", variant="primary")
@@ -811,7 +894,6 @@ with gr.Blocks(title="AI Novel Generator") as demo:
     output_text = gr.Textbox(label="4. Generated Novel Content", lines=20, interactive=False)
     with gr.Row():
         download_link = gr.File(label="5. Download Full Novel (.txt)", scale=4)
-        open_folder_btn = gr.Button("📂 Open Output Folder", scale=1)
 
     # Preset change event
     system_prompt_preset.change(
@@ -848,6 +930,27 @@ with gr.Blocks(title="AI Novel Generator") as demo:
     
     stop_plot_btn.click(fn=None, inputs=None, outputs=None, cancels=[plot_click, refine_click])
     
+    # Save plot event
+    save_plot_btn.click(
+        fn=save_plot_fn,
+        inputs=[plot_output, language],
+        outputs=[plot_status, plot_list]
+    )
+    
+    # Load plot event
+    load_plot_btn.click(
+        fn=load_plot_fn,
+        inputs=[plot_list],
+        outputs=[plot_output, plot_status]
+    )
+    
+    # Refresh plot list event
+    refresh_plot_btn.click(
+        fn=refresh_plot_list,
+        inputs=None,
+        outputs=[plot_list]
+    )
+    
     # Auto-generate seed event
     auto_seed_btn.click(
         fn=generate_random_seed_fn,
@@ -858,41 +961,49 @@ with gr.Blocks(title="AI Novel Generator") as demo:
         outputs=[plot_seed]
     )
     
-    # Novel click event
-    novel_click = generate_btn.click(
-        fn=generate_novel,
+    # Novel click event with queueing
+    novel_event = generate_btn.click(
+        fn=enqueue_task,
         inputs=[
+            gr.State("single"),
             api_base, model_name, system_prompt, plot_output, num_chapters, target_tokens, language,
             start_chapter, output_text,
             temperature, top_p, repetition_penalty
         ],
-        outputs=[output_text, download_link]
+        outputs=[queue_count_display],
+        concurrency_limit=None
+    ).then(
+        fn=run_worker,
+        inputs=None,
+        outputs=[plot_output, output_text, download_link, queue_count_display],
+        concurrency_limit=1
     )
-    stop_btn.click(fn=None, inputs=None, outputs=None, cancels=[novel_click])
+    stop_btn.click(fn=None, inputs=None, outputs=None, cancels=[novel_event])
 
-    def clear_batch_queue():
+    def clear_task_queue():
         with QUEUE_LOCK:
-            BATCH_QUEUE.clear()
+            TASK_QUEUE.clear()
         return 0
 
     # Batch click event with queueing
     batch_event = batch_start_btn.click(
-        fn=enqueue_batch,
+        fn=enqueue_task,
         inputs=[
+            gr.State("batch"),
             api_base, model_name, system_prompt, plot_seed, num_chapters, target_tokens, language, batch_count,
             temperature, top_p, repetition_penalty
         ],
         outputs=[queue_count_display],
         concurrency_limit=None
     ).then(
-        fn=run_batch_worker,
+        fn=run_worker,
         inputs=None,
         outputs=[plot_output, output_text, download_link, queue_count_display],
         concurrency_limit=1
     )
     
     batch_stop_btn.click(
-        fn=clear_batch_queue, 
+        fn=clear_task_queue, 
         inputs=None, 
         outputs=[queue_count_display], 
         cancels=[batch_event]
