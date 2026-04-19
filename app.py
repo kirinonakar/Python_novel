@@ -860,15 +860,15 @@ def run_worker():
             task_type, params = TASK_QUEUE.pop(0)
         
         if task_type == "batch":
-            # params = (api_base, model_name, system_prompt, plot_seed, num_chapters, target_tokens, language, batch_count, temperature, top_p, repetition_penalty)
+            # params = (api_base, model_name, google_api_key, system_prompt, plot_seed, num_chapters, target_tokens, language, batch_count, temperature, top_p, repetition_penalty)
             for p, t, f in batch_process(*params):
                 with QUEUE_LOCK:
                     current_count = len(TASK_QUEUE)
                 yield p, t, f, current_count
         else: # single
-            # params = (api_base, model_name, system_prompt, plot_output, num_chapters, target_tokens, language, start_chapter, output_text, temperature, top_p, repetition_penalty)
+            # params = (api_base, model_name, google_api_key, system_prompt, plot_output, num_chapters, target_tokens, language, start_chapter, output_text, temperature, top_p, repetition_penalty)
             # generate_novel yields (full_text, file_path)
-            plot_outline = params[3]
+            plot_outline = params[4]
             for t, f in generate_novel(*params):
                 with QUEUE_LOCK:
                     current_count = len(TASK_QUEUE)
