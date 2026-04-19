@@ -3,7 +3,8 @@ __pycache__/
 *.py[codz]
 *$py.class
 
-system_prompt.txt
+system_prompt*.txt
+gemini.txt
 
 # C extensions
 *.so
